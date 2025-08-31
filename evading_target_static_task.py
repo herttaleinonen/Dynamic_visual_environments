@@ -19,16 +19,15 @@ from config import (
     target_sf, movement_delay
 )
 
-def run_static_trials(win, el_tracker,
+def run_evading_target_static_trials(win, el_tracker,
                       screen_width, screen_height,
                       participant_id, timestamp,
                       noise_grain=3):
     """
     Static 'evading target' with per-trial fixed n-back and distractor camo:
-      - NEW: On target-present trials, the target appears at 0.2 s by taking over a distractor.
+      - On target-present trials, the target appears at 0.2 s by taking over a distractor.
              On that frame, all other distractors re-randomize (masked reveal).
-      - NEW: Fixations are tracked continuously, but n-back retargeting only activates after the target appears (>=0.2 s).
-      - Existing behavior otherwise unchanged.
+      - Fixations are tracked continuously, but n-back retargeting only activates after the target appears (>=n s).
     """
 
     sw, sh = screen_width, screen_height
