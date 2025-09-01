@@ -7,7 +7,7 @@ Created on Fri May 23 13:09:28 2025
 """
 
 # config.py
-# Contains parameters for the dynamic task
+# Contains parameters for the experiments
 
 
 import numpy as np
