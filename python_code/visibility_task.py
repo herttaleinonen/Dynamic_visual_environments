@@ -1,9 +1,10 @@
 # visibility_task.py
 # -*- coding: utf-8 -*-
-# author Hertta Leinonen
 
 """
-visibility_task.py
+Created on Jul 30 12:20:11 2025
+
+@author: herttaleinonen
 
 Provides run_visibility_trials() for calling from main.py after EyeLink setup.
 Generates a visibility map by presenting single Gabor stimuli on a static Gaussian noise background,
