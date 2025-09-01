@@ -19,16 +19,10 @@ from EyeLinkCoreGraphicsPsychoPy import EyeLinkCoreGraphicsPsychoPy
 from psychopy import visual, core, event, monitors, gui
 from string import ascii_letters, digits
 
-from dynamic_task import run_dynamic_trials  # <-- Dynamic task imported here
-from static_task import run_static_trials  # <-- Static task imported here
-from evading_target_static_task import run_evading_target_static_trials # <-- Static evading target task imported here
-from visibility_task import run_visibility_trials # <-- Visibility task imported here
-
-from flicker_static_task import run_flicker_static_trials  # <-- Static flicker task imported here
-from flicker_dynamic_task import run_flicker_dynamic_trials  # <-- Dynamic flicker task imported here
-from window_static_task import run_window_static_trials # <-- Static window task imported here
-from window_dynamic_task import run_window_dynamic_trials # <-- Dynamic window task imported here
-from following_target_dynamic_task import run_following_target_dynamic_trials # <-- Dynamic evading target task imported here
+from dynamic_task import run_dynamic_trials  
+from static_task import run_static_trials  
+from evading_target_static_task import run_evading_target_static_trials 
+from visibility_task import run_visibility_trials
 
 # --- Setup ---
 dummy_mode = False
