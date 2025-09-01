@@ -5,11 +5,6 @@ Created on Wed May 28 12:40:52 2025
 
 @author: herttaleinonen
 
-
-
-TODO: record the seed of the gaussian noise
-TODO: record the ori of distractors
-
 static_task.py
 
 Provides run_static_trials() for calling from main.py after EyeLink setup.
