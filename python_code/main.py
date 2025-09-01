@@ -115,20 +115,11 @@ el_tracker.sendCommand("button_function 5 'accept_target_fixation'")
 # Step 4:
 # Set up a graphics environment for calibration
 # Setup a screen
-'''
-mon = monitors.Monitor('myMonitor', width=48.0, distance=70.0) # custom dimensions
-win = visual.Window(fullscr=full_screen, monitor=mon, winType='pyglet', units='pix')
-# get the native screen reso used by PsychoPy
-scn_width, scn_height = win.size
-'''
-
 mon = monitors.Monitor('ViewPixx', 
                     width=48.0, 
                     distance=70.0) # custom dimensions
                         
 mon.setSizePix((1920, 1080))
-
-#mon.setActualFrameRate(120.0)
 
 win = visual.Window(
                     fullscr=True,
