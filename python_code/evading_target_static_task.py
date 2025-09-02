@@ -16,7 +16,6 @@ Created on Tue Aug 26 12:22:50 2025
       - Fixations are tracked continuously, but n-back retargeting only activates after the target appears (>= n s).
          
 """
-
 import os
 import csv
 import random
@@ -35,7 +34,6 @@ def run_evading_target_static_trials(win, el_tracker,
                       participant_id, timestamp,
                       noise_grain=3):
 
-
     sw, sh = screen_width, screen_height
     out_dir = 'results'
     os.makedirs(out_dir, exist_ok=True)
@@ -44,16 +42,16 @@ def run_evading_target_static_trials(win, el_tracker,
     # ---------- Gaze & capture parameters ----------
     prev_gx, prev_gy   = sw/2.0, sh/2.0
     ema_alpha          = 0.55              # smoothing (higher = snappier)
-    fix_radius_px      = 45                # fixation radius (px)
+    fix_radius_px      = cell_size         # fixation radius is 35x35px
     min_fix_frames     = 4                 # frames to commit (~65 ms at 60 Hz)
     capture_radius_px  = 2.0 * cell_size   # generous capture to reduce misses
     appear_delay_s     = 0.5               # target reveals at 500 ms
     min_gaze_sep_px    = 1.25 * cell_size  # small separation from *current* gaze to avoid quasi 0-back landings
     holdoff_by_k  = {                      # SOA before a −k location is allowed (seconds)
                          1: 0.25,          # strongest delay for k=1
-                         2: 0.20,
-                         4: 0.12,          
-                         8: 0.08,          
+                         2: 0.2,
+                         4: 0.12,       
+                         8: 0.08       
                          }
     # ------------------------------------------------
 
@@ -62,6 +60,15 @@ def run_evading_target_static_trials(win, el_tracker,
     grid_h = grid_size_y * cell_size
     off_x = -grid_w / 2
     off_y = -grid_h / 2
+
+    def pix_to_grid(fx_c, fy_c):
+        # convert centered PsychoPy pixels -> grid cell indices
+        gx = (fx_c - off_x) / cell_size
+        gy = (fy_c - off_y) / cell_size
+        ix = int(np.clip(np.round(gx), 0, grid_size_x - 1))
+        iy = int(np.clip(np.round(gy), 0, grid_size_y - 1))
+        return ix, iy
+
 
     # fixation cross screen
     fix_cross = visual.TextStim(win, text='+', color='black', height=40, units='pix')
@@ -95,8 +102,9 @@ def run_evading_target_static_trials(win, el_tracker,
     with open(filename, 'w', newline='') as f:
         writer = csv.writer(f)
         writer.writerow([
+            'Task Type','Participant ID',
             'Trial','TargetPresent','Response','Correct','RT',
-            'NumGabors','GaborPos','TargetPos','NBackK','NBackUsedSeq'
+            'NumGabors','GaborPos','Target Trajectory','NBackK','NBackUsedSeq', 'Fixations'
         ])
 
         # --------- Balanced present/absent and EXACTLY balanced per-trial NBackK among PRESENT trials ---------
@@ -183,6 +191,12 @@ def run_evading_target_static_trials(win, el_tracker,
             inspected_idxs   = []               # distractor indices inspected (post-appearance)
             inspected_times  = []               # MATCHED timestamps (clk.getTime()) for each entry above
             nback_used_seq   = []
+            
+            # will store [(x_px_centered, y_px_centered), ...]
+            fix_log = []  
+            
+            # track all target landings (in grid coords) for this trial
+            target_traj = []
 
             # fixation clustering state
             cluster_cx, cluster_cy = prev_gx, prev_gy
@@ -236,6 +250,8 @@ def run_evading_target_static_trials(win, el_tracker,
                     gabors[tgt_idx].sf  = target_sf
                     refresh_all_distractors(exclude_idx=tgt_idx)
                     armed = True
+                    # log first landing in grid coordinates
+                    target_traj.append(pos[tgt_idx])
 
                 # sample gaze + EMA
                 if el_tracker:
@@ -265,12 +281,18 @@ def run_evading_target_static_trials(win, el_tracker,
                                 # --- commit fixation ---
                                 fx_c = cluster_cx - sw/2.0
                                 fy_c =  sh/2.0 - cluster_cy
+                                # convert to grid
+                                ix, iy = pix_to_grid(fx_c, fy_c)
                                 d2 = (centers_pix[:,0] - fx_c)**2 + (centers_pix[:,1] - fy_c)**2
                                 current_idx = None
                                 if d2.size > 0:
                                     j = int(np.argmin(d2))
                                     if math.sqrt(d2[j]) <= capture_radius_px:
                                         current_idx = j
+                                
+                                # log fixation regardless of whether it matched a Gabor
+                                fix_log.append((ix, iy))         # grid coords
+
 
                                 # ALWAYS record fixation into history from trial start (pre- and post-reveal)
                                 if current_idx is None:
@@ -289,34 +311,31 @@ def run_evading_target_static_trials(win, el_tracker,
                                 # n-back retargeting: ONLY after reveal
                                 if armed and tp and (trial_k != ''):
                                     k = int(trial_k)
-                                    # Use history excluding the *current* fixation to avoid 0-back
-                                    prior_len = len(inspected_idxs) - 1
+                                    # STRICT n-back: require full k history, no fallback
+                                    prior_len = len(inspected_idxs) - 1          # exclude the current fixation
                                     if prior_len >= k:
-                                        cand_hist_idx = prior_len - k          # index in inspected_* arrays
+                                        cand_hist_idx = prior_len - k            # exactly k back
                                         cand_idx      = inspected_idxs[cand_hist_idx]
                                         cand_time     = inspected_times[cand_hist_idx]
-
                                         if cand_idx != tgt_idx:
-                                            # (a) stimulus onset asynchrony (SOA) since that fixation
+                                            # age/separation checks
                                             age_ok = (now_t - cand_time) >= holdoff_by_k.get(k, 0.0)
-
-                                            # (b) small separation from *current gaze* so −1 doesn't land right next to you
                                             gaze_x = cluster_cx - sw/2.0
                                             gaze_y =  sh/2.0  - cluster_cy
                                             dx = centers_pix[cand_idx][0] - gaze_x
                                             dy = centers_pix[cand_idx][1] - gaze_y
                                             sep_ok = (dx*dx + dy*dy) >= (min_gaze_sep_px * min_gaze_sep_px)
-
                                             if age_ok and sep_ok:
-                                                # jump + mask 
+                                                # jump + mask
                                                 gabors[cand_idx].ori = target_orientation
                                                 gabors[cand_idx].sf  = target_sf
                                                 gabors[tgt_idx].ori  = random.choice(orientations)
                                                 gabors[tgt_idx].sf   = random.choice(spatial_frequencies)
                                                 tgt_idx = cand_idx
-                                                nback_used_seq.append(k)
+                                                nback_used_seq.append(k)     # strictly the chosen k
                                                 refresh_all_distractors(exclude_idx=tgt_idx)
-
+                                                # log this jump landing (grid coords)
+                                                target_traj.append(pos[tgt_idx])
 
                                 committed_this_cluster = True
 
@@ -325,23 +344,30 @@ def run_evading_target_static_trials(win, el_tracker,
                             if (cluster_len >= min_fix_frames) and (not committed_this_cluster):
                                 fx_c = cluster_cx - sw/2.0
                                 fy_c =  sh/2.0 - cluster_cy
+                                # convert to grid for logging
+                                ix, iy = pix_to_grid(fx_c, fy_c)
                                 d2 = (centers_pix[:,0] - fx_c)**2 + (centers_pix[:,1] - fy_c)**2
                                 current_idx = None
                                 if d2.size > 0:
                                     j = int(np.argmin(d2))
                                     if math.sqrt(d2[j]) <= capture_radius_px:
                                         current_idx = j
+                                
+                                # log fixation regardless of whether it matched a Gabor
+                                fix_log.append((ix, iy))         # grid coords
 
                                 # record fixation history from trial start
                                 if current_idx is None:
                                     imputed = nearest_distractor_index(centers_pix, fx_c, fy_c, exclude_idx=tgt_idx)
                                     if (imputed is not None) and (not inspected_idxs or inspected_idxs[-1] != imputed):
                                         inspected_idxs.append(imputed)
+                                        inspected_times.append(now_t)            
                                         # NOTE: if you rely on SOA here too, also append inspected_times.append(now_t)
                                 else:
                                     if (tgt_idx is None) or (current_idx != tgt_idx):
                                         if not inspected_idxs or inspected_idxs[-1] != current_idx:
                                             inspected_idxs.append(current_idx)
+                                            inspected_times.append(now_t)           
                                             # NOTE: if you rely on SOA here too, also append inspected_times.append(now_t)
 
                                 # n-back retargeting: ONLY after reveal
@@ -372,6 +398,8 @@ def run_evading_target_static_trials(win, el_tracker,
                                                 tgt_idx = cand_idx
                                                 nback_used_seq.append(k)
                                                 refresh_all_distractors(exclude_idx=tgt_idx)
+                                                # log this jump landing (grid coords)
+                                                target_traj.append(pos[tgt_idx])
 
                             # start new cluster
                             cluster_cx, cluster_cy = prev_gx, prev_gy
@@ -401,32 +429,37 @@ def run_evading_target_static_trials(win, el_tracker,
                 el_tracker.sendMessage('stimulus_offset')
                 el_tracker.stopRecording()
 
+
             # feedback
             if response is None:
                 # for CSV file "Response" column
                 fb_text = timeout_feedback_text
-                resp_str = ''      # leave empty for timeouts
-                rt_str   = ''      # leave empty for RT
+                resp_csv = ''   # leave empty for timeouts
+                rt_str   = ''   # leave empty for RT
                 corr     = 0
             else:
-                # response == 1 means “right arrow” (target-present), response == 0 means “left arrow” (target-absent)
+                # response is 1 for 'right' (target), 0 for 'left' (distractor)
                 corr = int((response == 1 and tp) or (response == 0 and not tp))
                 # feedback on screen for participant
                 fb_text = 'Correct' if corr else 'Incorrect'
-                resp_str = 'target' if response == 1 else 'distractor'
+                resp_csv = response  # write 1 or 0 to CSV
                 rt_str = rt
-
+            
             visual.TextStim(win, text=fb_text, color='white', height=40, units='pix').draw()
             win.flip(); core.wait(feedback_duration)
-            event.clearEvents(eventType='keyboard') # flush after feedback
+            event.clearEvents(eventType='keyboard')  # flush after feedback
 
-            # log (NBackK = fixed per-trial k; NBackUsedSeq = ks actually used each jump, e.g. [-4, -4, -4, -4,])
+
             writer.writerow([
-                t+1, int(tp), resp_str, corr, rt_str,
-                n, pos, (pos[tgt_idx] if (tp and tgt_idx is not None) else None),
-                (trial_k if tp else ''), nback_used_seq
+                'evading target static task',                           # Task Type
+                participant_id,                                         # Participant ID
+                t+1, int(tp), resp_csv, corr, rt_str,                   # trial meta
+                n, pos,                                                 # layout
+                (target_traj if (tp and len(target_traj)>0) else []),   # full trajectory
+                (trial_k if tp else ''),                                # per-trial n-back condition (blank if absent)
+                nback_used_seq,                                         # ks actually used on each jump
+                fix_log                                                 # Fixations 
             ])
 
+
     return filename
-
-
