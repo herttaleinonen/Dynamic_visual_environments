@@ -10,7 +10,7 @@ import os
 import csv
 import random
 import numpy as np
-from psychopy import visual, core, event, gui, monitors
+from psychopy import visual, core, event
 from config import (
     grid_size_x, grid_size_y, cell_size, DIAGONAL_SCALE,
     num_trials, trial_duration, feedback_duration, timeout_feedback_text,
@@ -18,12 +18,10 @@ from config import (
     target_sf, transition_steps, movement_delay
 )
 
-from datetime import datetime
-from scipy.stats import norm
 
 # -------- Helper functions --------
-# Generate Gaussian noise
 
+# Generate Gaussian noise
 noise_grain = 3 #pixel x pixel
 
 def generate_noise(screen_width, screen_height, grain_size=noise_grain):
@@ -72,31 +70,39 @@ def run_dynamic_trials(win, el_tracker, screen_width, screen_height, participant
     grid_pixel_height = grid_size_y * cell_size
     grid_offset_x = -grid_pixel_width / 2 
     grid_offset_y = -grid_pixel_height / 2
-
-
-    # Initialize Noise and Instructions
-    noise_stim = visual.ImageStim(
-        win, 
-        image=generate_noise(screen_width, screen_height),
-        size=(screen_width, screen_height), 
-        units="pix", 
-        interpolate=False
-    )
     
     # Pre-compute a bank of 30 noise frames
     noise_bank = [generate_noise(screen_width, screen_height, grain_size=3)
                 for _ in range(30)]
     bank_i = 0
+    
+    # Initialize Noise
+    noise_frames = [
+        visual.ImageStim(
+            win,
+            image=img,
+            size=(screen_width, screen_height),
+            units="pix",
+            interpolate=False
+        )
+        for img in noise_bank
+    ]
+    bank_i = 0
 
-    instruction_text = visual.TextStim(win, text="In the following experiment, you will see moving objects.\n"
-                                                 "Among them is a target, that is tilted 45 degrees like this: /.\n"
-                                                 "Press '>' if you see the target.\n"
-                                                 "Press '<' if you do not.\n"
-                                                 "Press Enter to start.",
-                                       color="white", height=30, wrapWidth=screen_width * 0.8)
-    instruction_text.draw()
-    win.flip()
-    event.waitKeys(keyList=["return"])
+    
+    # Initialize instructions screen
+    instruction_text = visual.TextStim(win,
+        text=("In the following task, you will see objects, and among them you have to find a target object.\n"
+              "The target object is tilted 45°.\n"
+              "Press 'right arrow key ' if you see the target, 'left arrow key' if not.\n"
+              "Each trial you have 5 seconds to decide, try to make the decision as fast as possible.\n"
+              "Press Enter to start."),
+        color='white', height=30, wrapWidth=screen_width * 0.8, units='pix'
+    )
+    instruction_text.draw(); 
+    win.flip(); 
+    event.waitKeys(keyList=['return'])
+    event.clearEvents(eventType='keyboard')  # keep buffer clean
 
     # Open a CSV file for behavioural results
     with open(filename, mode='w', newline='') as file:
@@ -105,7 +111,7 @@ def run_dynamic_trials(win, el_tracker, screen_width, screen_height, participant
                          "Reaction Time (s)", "Num Gabors", "Gabor Positions", "Target Trajectory", "Speed (px/s)"])
                          
         #calculate speed of Gabors in pixel/second
-        speed_px_per_sec = (4 * cell_size) / (transition_steps * movement_delay)
+        #speed_px_per_sec = (4 * cell_size) / (transition_steps * movement_delay)
         
         for trial in range(num_trials):
             # 500 ms fixation cross
@@ -182,11 +188,15 @@ def run_dynamic_trials(win, el_tracker, screen_width, screen_height, participant
             # Log a message to mark the onset of the stimulus
             el_tracker.sendMessage('stimulus_onset')
             
+            # Initialize speed measuring
+            dist_px = 0.0
+            prev_px = None
             
             while trial_clock.getTime() < trial_duration:
-                noise_stim.image = noise_bank[bank_i]
-                bank_i = (bank_i + 1) % len(noise_bank)
-                noise_stim.draw()
+                # draw noise
+                noise_frames[bank_i].draw()
+                bank_i = (bank_i + 1) % len(noise_frames)
+                
                 frame_positions = []
 
                 for i in range(num_gabors):
@@ -215,6 +225,19 @@ def run_dynamic_trials(win, el_tracker, screen_width, screen_height, participant
                     target_x, target_y = frame_positions[target_index]
                     target_trajectory.append((target_x, target_y))
 
+
+                # convert target grid coords -> pixels
+                tx = target_x * cell_size + grid_offset_x
+                ty = target_y * cell_size + grid_offset_y
+                
+                if prev_px is not None:
+                    dx = tx - prev_px[0]
+                    dy = ty - prev_px[1]
+                    dist_px += (dx*dx + dy*dy) ** 0.5
+                
+                prev_px = (tx, ty)
+
+
                 for g in gabors:
                     g.draw()
                 win.flip()
@@ -231,7 +254,12 @@ def run_dynamic_trials(win, el_tracker, screen_width, screen_height, participant
 
             # Stop recording
             el_tracker.stopRecording()
+            
+            # Get speed measurement
+            elapsed = trial_clock.getTime()
+            speed_px_per_sec = dist_px / elapsed if elapsed > 0 else 0.0
 
+            # Feedback
             if response:
                 is_correct = (response == "right" and target_present) or (response == "left" and not target_present)
                 feedback_text = "Correct" if is_correct else "Incorrect"
