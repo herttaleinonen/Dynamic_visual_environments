@@ -108,7 +108,7 @@ def run_evading_target_static_trials(win, el_tracker,
         ])
 
         # --------- Balanced present/absent and EXACTLY balanced per-trial NBackK among PRESENT trials ---------
-        present_ratio = 0.5  # 50/50 split (adjust if you want)
+        present_ratio = 0.5  # 50/50 split 
 
         num_present_raw = int(round(num_trials * present_ratio))
         # Force present count to nearest multiple of 4 (because k in {1,2,4,8})
@@ -362,13 +362,13 @@ def run_evading_target_static_trials(win, el_tracker,
                                     if (imputed is not None) and (not inspected_idxs or inspected_idxs[-1] != imputed):
                                         inspected_idxs.append(imputed)
                                         inspected_times.append(now_t)            
-                                        # NOTE: if you rely on SOA here too, also append inspected_times.append(now_t)
+                                        
                                 else:
                                     if (tgt_idx is None) or (current_idx != tgt_idx):
                                         if not inspected_idxs or inspected_idxs[-1] != current_idx:
                                             inspected_idxs.append(current_idx)
                                             inspected_times.append(now_t)           
-                                            # NOTE: if you rely on SOA here too, also append inspected_times.append(now_t)
+                                            
 
                                 # n-back retargeting: ONLY after reveal
                                 if armed and tp and (trial_k != ''):
@@ -378,10 +378,10 @@ def run_evading_target_static_trials(win, el_tracker,
                                     if prior_len >= k:
                                         cand_hist_idx = prior_len - k          # index in inspected_* arrays
                                         cand_idx      = inspected_idxs[cand_hist_idx]
-                                        # cand_time would come from inspected_times if you also appended it above
+                                        
 
                                         if cand_idx != tgt_idx:
-                                            # (a) SOA since that fixation (skip if you didn't append times here)
+                                            # (a) SOA since that fixation 
                                             # (b) small separation from current gaze:
                                             gaze_x = cluster_cx - sw/2.0
                                             gaze_y =  sh/2.0  - cluster_cy
