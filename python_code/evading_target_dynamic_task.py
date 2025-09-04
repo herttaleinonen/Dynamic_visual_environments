@@ -100,7 +100,7 @@ def run_evading_target_dynamic_trials(win, el_tracker, screen_width, screen_heig
     ]
     bank_i = 0
 
-    # For CSV: keep a simple nominal speed (same as your earlier formula)
+    # For CSV: keep a simple nominal speed 
     speed_px_per_sec = (4 * cell_size) / (transition_steps * movement_delay)
     
     # Initialize instructions screen
@@ -189,7 +189,7 @@ def run_evading_target_dynamic_trials(win, el_tracker, screen_width, screen_heig
             if tp:
                 k_idx += 1
 
-            target_present = tp  # keep your existing variable name used below
+            target_present = tp  
 
             # Generate the positions (grid coords)
             positions = [(random.randint(2, grid_size_x - 3), random.randint(2, grid_size_y - 3))
