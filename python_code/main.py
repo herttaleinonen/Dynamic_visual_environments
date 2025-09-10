@@ -179,8 +179,9 @@ if not dummy_mode:
         print('ERROR:', err)
         el_tracker.exitCalibration()
 
-        
-# ------------------ Task picker (works inside PsychoPy) ------------------
+# Step 5:
+# Run a task with eye tracking
+# Task picker (works inside PsychoPy) 
 tasks = {
     "1":  ("Gaze cross test",           run_square_test),  
     "2":  ("Visibility (yes/no)",       run_visibility_trials),
@@ -286,10 +287,10 @@ if selected_keys:
     print("\nAll requested tasks finished.")
 else:
     print("\nNo tasks selected. Nothing to run.")
-    
-# ------------------------------------------------------------------------
-    
-# --- Step 7: Download and close ---
+
+
+# Step 6:
+# Download and close 
 def terminate_task():
     if el_tracker.isConnected():
         if el_tracker.isRecording():
