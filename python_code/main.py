@@ -11,18 +11,19 @@ Handles Eyelink connection, calibration and EDF data and calls for a task script
 from __future__ import division, print_function
 import pylink
 import os
-import platform
 import time
 import sys
-import numpy as np
 from EyeLinkCoreGraphicsPsychoPy import EyeLinkCoreGraphicsPsychoPy
 from psychopy import visual, core, event, monitors, gui
 from string import ascii_letters, digits
 
 from dynamic_task import run_dynamic_trials  
 from static_task import run_static_trials  
-from evading_target_static_task import run_evading_target_static_trials 
-from visibility_task import run_visibility_trials
+from evading_target_static_task import run_evading_target_static_trials
+from evading_target_dynamic_task import run_evading_target_dynamic_trials
+from visibility_task import run_visibility_trials 
+from test_task import run_square_test
+
 
 # --- Setup ---
 dummy_mode = False
@@ -92,8 +93,10 @@ if not dummy_mode:
 # File and Link data control
 # what eye events to save in the EDF file, include everything by default
 file_event_flags = 'LEFT,RIGHT,FIXATION,SACCADE,BLINK,MESSAGE,BUTTON,INPUT'
+
 # what eye events to make available over the link, include everything by default
 link_event_flags = 'LEFT,RIGHT,FIXATION,SACCADE,BLINK,BUTTON,FIXUPDATE,INPUT'
+
 # what sample data to save in the EDF data file and to make available
 # over the link, include the 'HTARGET' flag to save head target sticker
 # data for supported eye trackers
@@ -115,11 +118,14 @@ el_tracker.sendCommand("button_function 5 'accept_target_fixation'")
 # Step 4:
 # Set up a graphics environment for calibration
 # Setup a screen
+
 mon = monitors.Monitor('ViewPixx', 
                     width=48.0, 
                     distance=70.0) # custom dimensions
                         
 mon.setSizePix((1920, 1080))
+
+#mon.setActualFrameRate(120.0)
 
 win = visual.Window(
                     fullscr=True,
@@ -172,103 +178,117 @@ if not dummy_mode:
     except RuntimeError as err:
         print('ERROR:', err)
         el_tracker.exitCalibration()
+
         
+# ------------------ Task picker (works inside PsychoPy) ------------------
+tasks = {
+    "1":  ("Gaze cross test",           run_square_test),  
+    "2":  ("Visibility (yes/no)",       run_visibility_trials),
+    "3":  ("Dynamic (moving gabors)",   run_dynamic_trials),
+    "4":  ("Static (stationary gabors)",run_static_trials),
+    "5":  ("Evading target STATIC",     run_evading_target_static_trials),
+    "6": ("Evading target DYNAMIC",     run_evading_target_dynamic_trials),
+}
 
-# --- Step 6: Run dynamic trials ---
-# Calls class from task file 
-# Remember to comment out the ones you are not using
-"""
-run_dynamic_trials(
-    win=win,
-    el_tracker=el_tracker,
-    screen_width=scn_width,
-    screen_height=scn_height,
-    participant_id=edf_fname,
-    timestamp=session_identifier
-)
+# env var to skip menu, e.g. TASKS="1,4,6"
+_preselect = os.getenv("TASKS", "").replace(" ", "")
+if _preselect:
+    selected_keys = []
+    for k in _preselect.split(","):
+        if k == "0" and "10" in tasks:
+            k = "10"
+        if k in tasks and k not in selected_keys:
+            selected_keys.append(k)
+else:
+    selected_keys = []
 
-run_static_trials(
-    win=win,
-    el_tracker=el_tracker,
-    screen_width=scn_width,
-    screen_height=scn_height,
-    participant_id=edf_fname,
-    timestamp=session_identifier
-)
+def _run_task(func):
+    try:
+        csv_path = func(
+            win=win,
+            el_tracker=el_tracker,
+            screen_width=scn_width,
+            screen_height=scn_height,
+            participant_id=edf_fname,
+            timestamp=session_identifier
+        )
+        if csv_path:
+            print(f"[OK] {func.__name__} saved: {csv_path}")
+    except Exception as e:
+        print(f"[ERROR] {func.__name__}: {e}")
 
-run_flicker_static_trials(
-    win=win,
-    el_tracker=el_tracker,
-    screen_width=scn_width,
-    screen_height=scn_height,
-    participant_id=edf_fname,
-    timestamp=session_identifier
-)
+if not _preselect:
+    # Build a stable numeric order from whatever keys you actually defined
+    _order = sorted(tasks.keys(), key=lambda x: int(x))
 
-run_flicker_dynamic_trials(
-    win=win,
-    el_tracker=el_tracker,
-    screen_width=scn_width,
-    screen_height=scn_height,
-    participant_id=edf_fname,
-    timestamp=session_identifier
-)
+    # Show "0" as a shortcut for "10" only if 10 exists
+    has_zero_shortcut = "10" in tasks
 
+    menu_text = visual.TextStim(win, text="", color="white", height=28,
+                                wrapWidth=scn_width*0.9, units="pix")
+    hint = "Press digits to toggle, ENTER to start, A=all, C=clear, ESC=cancel"
+    if has_zero_shortcut:
+        hint = "Press digits (0=10) to toggle, ENTER to start, A=all, C=clear, ESC=cancel"
+    instr_text = visual.TextStim(win, text=hint, color="white", height=24,
+                                 pos=(0, -scn_height*0.42), units="pix")
 
-run_window_static_trials(
-    win=win,
-    el_tracker=el_tracker,
-    screen_width=scn_width,
-    screen_height=scn_height,
-    participant_id=edf_fname,
-    timestamp=session_identifier
-)
+    def render_menu():
+        lines = ["Which task(s) do you want to run?\n"]
+        for k in _order:
+            label = tasks[k][0]
+            keyhint = "0" if (k == "10" and has_zero_shortcut) else k
+            mark = " [X]" if k in selected_keys else ""
+            lines.append(f"{keyhint:>2}) {label}{mark}")
+        menu_text.text = "\n".join(lines)
+        menu_text.draw(); instr_text.draw(); win.flip()
 
+    # Build valid key list from actual tasks
+    base_digits = set(k for k in _order if int(k) < 10)
+    valid_digit_keys = {str(d) for d in range(10) if str(d) in base_digits}
+    if has_zero_shortcut:
+        valid_digit_keys.add("0")  # map to "10"
+    # include numpad versions
+    number_keys = list(valid_digit_keys) + [f"num_{k}" for k in valid_digit_keys]
+    control_keys = ["return", "enter", "escape", "a", "c"]
+    valid_keys = number_keys + control_keys
 
-run_window_dynamic_trials(
-    win=win,
-    el_tracker=el_tracker,
-    screen_width=scn_width,
-    screen_height=scn_height,
-    participant_id=edf_fname,
-    timestamp=session_identifier
-)
+    event.clearEvents(eventType="keyboard")
+    while True:
+        render_menu()
+        keys = event.waitKeys(keyList=valid_keys)
+        k = keys[0]
+        if k.startswith("num_"):
+            k = k[4:]
 
+        if k in valid_digit_keys:
+            kmap = "10" if (k == "0" and has_zero_shortcut) else k
+            if kmap in selected_keys:
+                selected_keys.remove(kmap)
+            else:
+                selected_keys.append(kmap)
+        elif k in ("return", "enter"):
+            break
+        elif k == "a":
+            selected_keys = [kk for kk in _order]
+        elif k == "c":
+            selected_keys = []
+        elif k == "escape":
+            selected_keys = []
+            break
+        event.clearEvents(eventType="keyboard")
 
-run_following_target_static_trials(
-    win=win,
-    el_tracker=el_tracker,
-    screen_width=scn_width,
-    screen_height=scn_height,
-    participant_id=edf_fname,
-    timestamp=session_identifier
-)
-"""
-run_evading_target_static_trials(
-    win=win,
-    el_tracker=el_tracker,
-    screen_width=scn_width,
-    screen_height=scn_height,
-    participant_id=edf_fname,
-    timestamp=session_identifier
-)
-"""
-
-# after calibration & EyeLink setup:
-csv_file = run_visibility_trials(
-    win, el_tracker, scn_width, scn_height,
-    edf_fname, session_identifier
-)
-print("Visibility data saved:", csv_file)
-run_visibility_trials( 
-    win=win,
-    el_tracker=el_tracker,
-    screen_width=scn_width,
-    screen_height=scn_height,
-    participant_id=edf_fname,
-    timestamp=session_identifier
-)
-"""
+# --- Run selected tasks in order ---
+if selected_keys:
+    for key in selected_keys:
+        label, func = tasks[key]
+        print(f"\n--- Running: {label} ---")
+        _run_task(func)
+    print("\nAll requested tasks finished.")
+else:
+    print("\nNo tasks selected. Nothing to run.")
+    
+# ------------------------------------------------------------------------
+    
 # --- Step 7: Download and close ---
 def terminate_task():
     if el_tracker.isConnected():
