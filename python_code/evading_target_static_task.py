@@ -47,13 +47,18 @@ def run_evading_target_static_trials(win, el_tracker,
     capture_radius_px  = 2.0 * cell_size   # generous capture to reduce misses
     appear_delay_s     = 0.5               # target reveals at 500 ms
     min_gaze_sep_px    = 1.25 * cell_size  # small separation from *current* gaze to avoid quasi 0-back landings
+
     holdoff_by_k  = {                      # SOA before a −k location is allowed (seconds)
-                         1: 0.25,          # strongest delay for k=1
-                         2: 0.2,
-                         4: 0.12,       
-                         8: 0.08       
-                         }
+        1: 0.35,                           
+        2: 0.20,
+        4: 0.12
+    }
     # ------------------------------------------------
+
+    # SCORE: lenient acceptance radius (scoring only; does not affect targeting)
+    def score_accept_radius_px():
+        sigma = cell_size / 6.0  # 'gauss' mask σ
+        return max(2.0 * capture_radius_px, 8.0 * sigma)
 
     # grid offsets (centered PsychoPy pixels)
     grid_w = grid_size_x * cell_size
@@ -76,7 +81,7 @@ def run_evading_target_static_trials(win, el_tracker,
     inst = visual.TextStim(win,
         text=("In the following task, you will see objects, and among them you have to find a target object.\n"
               "The target object is tilted 45°.\n"
-              "Press 'right arrow key ' if you see the target, 'left arrow key' if not.\n"
+              "Press SPACE as soon as you see the target.\n"
               "Each trial you have 5 seconds to decide, try to make the decision as fast as possible.\n"
               "Press Enter to start."),
         color='white', height=30, wrapWidth=sw*0.8, units='pix'
@@ -104,32 +109,35 @@ def run_evading_target_static_trials(win, el_tracker,
         writer.writerow([
             'Task Type','Participant ID',
             'Trial','TargetPresent','Response','Correct','RT',
-            'NumGabors','GaborPos','Target Trajectory','NBackK','NBackUsedSeq', 'Fixations'
+            'NumGabors','GaborPos','Target Trajectory','NBackK','NBackUsedSeq', 'Fixations',
+            # SCORE:
+            'FixOnTargetTime(s)','LastFixIndex'
         ])
 
-        # --------- Balanced present/absent and EXACTLY balanced per-trial NBackK among PRESENT trials ---------
-        present_ratio = 0.5  # 50/50 split 
+        # (legacy present/absent code not used because target is always present)
 
-        num_present_raw = int(round(num_trials * present_ratio))
-        # Force present count to nearest multiple of 4 (because k in {1,2,4,8})
-        num_present = (num_present_raw // 4) * 4   
-        present_flags = [1] * num_present + [0] * (num_trials - num_present)
-        random.shuffle(present_flags)
-
-        def make_balanced_k_sequence(n_present):
-            """Return a list with equal counts of {1,2,4,8} whose length == n_present."""
-            # blocks of 4 values: 1,2,4,8
-            blocks = n_present // 4
+        # --------- All trials are target-present; EXACTLY balanced per-trial NBackK across trials ---------
+        def make_balanced_k_sequence(n_trials):
+            """
+            Return a length-n_trials list with counts for conditions in {1, 2, 4, 'RND'}
+            as equal as mathematically possible. If n_trials isn't divisible by 4,
+            the remainder is distributed randomly across the set.
+            """ 
             ks = []
-            for _ in range(blocks):
-                block = [1, 2, 4, 8]   # n-back values
-                random.shuffle(block)  # local shuffle inside each block
-                ks.extend(block)
-            random.shuffle(ks)         # global shuffle across all blocks
+            base = n_trials // 4
+            rem  = n_trials % 4
+            for k in (1, 2, 4, 'RND'):   
+                ks.extend([k] * base)
+            if rem:
+                extras = [1, 2, 4, 'RND']  
+                random.shuffle(extras)
+                ks.extend(extras[:rem])
+            random.shuffle(ks)
             return ks
 
-        k_seq = make_balanced_k_sequence(num_present)  # len == num_present
+        k_seq = make_balanced_k_sequence(num_trials)  # len == num_trials
         k_idx = 0  # cursor into k_seq
+
         # ------------------------------------------------------------------------------------------------------
 
         for t in range(num_trials):
@@ -137,13 +145,10 @@ def run_evading_target_static_trials(win, el_tracker,
             fix_cross.draw(); win.flip(); core.wait(0.5)
             event.clearEvents(eventType='keyboard')
 
-            # --- balanced present/absent and per-trial k ---
-            tp = bool(present_flags[t])  # 1 -> True, 0 -> False
-            if tp:
-                trial_k = k_seq[k_idx]
-                k_idx += 1
-            else:
-                trial_k = ''  # absent trials carry no k
+            # --- per-trial k (always present) ---
+            tp = True                   # target always present
+            trial_k = k_seq[k_idx]      # pick the K for this trial (1,2,4,'RND')  
+            k_idx += 1
 
             # layout
             n  = random.choice([10])
@@ -203,20 +208,14 @@ def run_evading_target_static_trials(win, el_tracker,
             cluster_len = 0
             committed_this_cluster = False
 
-            # camo timer (present: local swaps; absent: full refresh)
-            next_swap_time = clk.getTime() + random.uniform(0.35, 0.85)
-
-            def swap_two_distractors(exclude=None):
-                nonlocal tgt_idx
-                if exclude is None:
-                    exclude = set()
-                pool = [i for i in range(n) if (tgt_idx is None or i != tgt_idx) and i not in exclude]
-                if len(pool) < 2:
-                    return False
-                i1, i2 = random.sample(pool, 2)
-                gabors[i1].ori, gabors[i2].ori = gabors[i2].ori, gabors[i1].ori
-                gabors[i1].sf,  gabors[i2].sf  = gabors[i2].sf,  gabors[i1].sf
-                return True
+            # SCORE: scoring-only vars (independent of targeting)
+            last_fix_on_target_time = None
+            last_committed_fix_idx  = None
+            score_inside_count      = 0
+            score_gx_c, score_gy_c  = 0.0, 0.0
+            score_prev_target_pos_c = None
+            score_target_change_time = -1e9
+            score_change_grace       = 0.8  # seconds
 
             def refresh_all_distractors(exclude_idx=None):
                 for j in range(n):
@@ -233,15 +232,6 @@ def run_evading_target_static_trials(win, el_tracker,
             response, rt = None, None
             while clk.getTime() < trial_duration:
                 now_t = clk.getTime()
-
-                # time-based camo
-                if now_t >= next_swap_time:
-                    if tp and (tgt_idx is not None):
-                        swap_two_distractors(exclude=None)
-                        next_swap_time = now_t + random.uniform(0.25, 0.55)
-                    else:
-                        refresh_all_distractors(exclude_idx=None)
-                        next_swap_time = now_t + random.uniform(0.35, 0.85)
 
                 # reveal target at 0.5 s in target-present trials
                 if tp and (not armed) and (now_t >= arm_at):
@@ -267,161 +257,147 @@ def run_evading_target_static_trials(win, el_tracker,
                         prev_gx = float(np.clip(ema_alpha*rx + (1-ema_alpha)*prev_gx, 0, sw-1))
                         prev_gy = float(np.clip(ema_alpha*ry + (1-ema_alpha)*prev_gy, 0, sh-1))
 
+                        # SCORE: convert to centered coords for scoring checks
+                        score_gx_c = prev_gx - (sw/2.0)
+                        score_gy_c = (sh/2.0) - prev_gy
+                        # if target exists, accept even a single-frame dwell within large radius
+                        if tgt_idx is not None:
+                            tgx, tgy = gabors[tgt_idx].pos  # centered coords
+                            d = ((score_gx_c - tgx)**2 + (score_gy_c - tgy)**2) ** 0.5
+                            if d <= score_accept_radius_px():
+                                score_inside_count += 1
+                                if (score_inside_count >= 1) and (last_fix_on_target_time is None):
+                                    last_fix_on_target_time = now_t
+                                    last_committed_fix_idx  = tgt_idx
+                            else:
+                                score_inside_count = 0
+
                         # fixation clustering
                         dx = prev_gx - cluster_cx
                         dy = prev_gy - cluster_cy
                         inside = (dx*dx + dy*dy) <= (fix_radius_px*fix_radius_px)
                         if inside:
+                            # still within this fixation
                             cluster_len += 1
                             w = 1.0 / max(1, cluster_len)
                             cluster_cx = (1 - w)*cluster_cx + w*prev_gx
                             cluster_cy = (1 - w)*cluster_cy + w*prev_gy
-
+                        
                             if (not committed_this_cluster) and (cluster_len == min_fix_frames):
-                                # --- commit fixation ---
+                                # --- commit fixation (log + add to inspection history) ---
                                 fx_c = cluster_cx - sw/2.0
                                 fy_c =  sh/2.0 - cluster_cy
-                                # convert to grid
+                        
+                                # convert to grid for logs
                                 ix, iy = pix_to_grid(fx_c, fy_c)
+                                fix_log.append((ix, iy))  # grid coords
+                        
+                                # map fixation to nearest gabor (capture), else impute to nearest distractor (exclude target)
                                 d2 = (centers_pix[:,0] - fx_c)**2 + (centers_pix[:,1] - fy_c)**2
                                 current_idx = None
                                 if d2.size > 0:
                                     j = int(np.argmin(d2))
                                     if math.sqrt(d2[j]) <= capture_radius_px:
                                         current_idx = j
-                                
-                                # log fixation regardless of whether it matched a Gabor
-                                fix_log.append((ix, iy))         # grid coords
-
-
-                                # ALWAYS record fixation into history from trial start (pre- and post-reveal)
+                        
                                 if current_idx is None:
-                                    # impute to nearest distractor, excluding target if present
                                     imputed = nearest_distractor_index(centers_pix, fx_c, fy_c, exclude_idx=tgt_idx)
                                     if (imputed is not None) and (not inspected_idxs or inspected_idxs[-1] != imputed):
                                         inspected_idxs.append(imputed)
                                         inspected_times.append(now_t)
                                 else:
-                                    # skip adding the target itself if it's already on screen
                                     if (tgt_idx is None) or (current_idx != tgt_idx):
                                         if not inspected_idxs or inspected_idxs[-1] != current_idx:
                                             inspected_idxs.append(current_idx)
                                             inspected_times.append(now_t)
-                                
-                                # n-back retargeting: ONLY after reveal
-                                if armed and tp and (trial_k != ''):
-                                    k = int(trial_k)
-                                    # STRICT n-back: require full k history, no fallback
-                                    prior_len = len(inspected_idxs) - 1          # exclude the current fixation
-                                    if prior_len >= k:
-                                        cand_hist_idx = prior_len - k            # exactly k back
-                                        cand_idx      = inspected_idxs[cand_hist_idx]
-                                        cand_time     = inspected_times[cand_hist_idx]
-                                        if cand_idx != tgt_idx:
-                                            # age/separation checks
-                                            age_ok = (now_t - cand_time) >= holdoff_by_k.get(k, 0.0)
-                                            gaze_x = cluster_cx - sw/2.0
-                                            gaze_y =  sh/2.0  - cluster_cy
-                                            dx = centers_pix[cand_idx][0] - gaze_x
-                                            dy = centers_pix[cand_idx][1] - gaze_y
-                                            sep_ok = (dx*dx + dy*dy) >= (min_gaze_sep_px * min_gaze_sep_px)
-                                            if age_ok and sep_ok:
-                                                # jump + mask
-                                                gabors[cand_idx].ori = target_orientation
-                                                gabors[cand_idx].sf  = target_sf
-                                                gabors[tgt_idx].ori  = random.choice(orientations)
-                                                gabors[tgt_idx].sf   = random.choice(spatial_frequencies)
-                                                tgt_idx = cand_idx
-                                                nback_used_seq.append(k)     # strictly the chosen k
-                                                refresh_all_distractors(exclude_idx=tgt_idx)
-                                                # log this jump landing (grid coords)
-                                                target_traj.append(pos[tgt_idx])
-
+                        
+                                # no retargeting on commit
                                 committed_this_cluster = True
 
                         else:
-                            # leaving cluster: commit if long enough and not yet committed
-                            if (cluster_len >= min_fix_frames) and (not committed_this_cluster):
-                                fx_c = cluster_cx - sw/2.0
-                                fy_c =  sh/2.0 - cluster_cy
-                                # convert to grid for logging
-                                ix, iy = pix_to_grid(fx_c, fy_c)
-                                d2 = (centers_pix[:,0] - fx_c)**2 + (centers_pix[:,1] - fy_c)**2
-                                current_idx = None
-                                if d2.size > 0:
-                                    j = int(np.argmin(d2))
-                                    if math.sqrt(d2[j]) <= capture_radius_px:
-                                        current_idx = j
-                                
-                                # log fixation regardless of whether it matched a Gabor
-                                fix_log.append((ix, iy))         # grid coords
+                            # just LEFT the fixation cluster
+                            if cluster_len >= min_fix_frames:
+                                # --- (A) Retarget only after reveal ---
+                                if armed and (tgt_idx is not None):
+                                    if trial_k == 'RND':  
+                                        # pick ANY distractor index at random (not the current target)
+                                        pool = [i for i in range(n) if i != tgt_idx]
+                                        if pool:
+                                            # SCORE: remember previous target position before swap
+                                            prev_target_pos_c = gabors[tgt_idx].pos if tgt_idx is not None else None
 
-                                # record fixation history from trial start
-                                if current_idx is None:
-                                    imputed = nearest_distractor_index(centers_pix, fx_c, fy_c, exclude_idx=tgt_idx)
-                                    if (imputed is not None) and (not inspected_idxs or inspected_idxs[-1] != imputed):
-                                        inspected_idxs.append(imputed)
-                                        inspected_times.append(now_t)            
-                                        
-                                else:
-                                    if (tgt_idx is None) or (current_idx != tgt_idx):
-                                        if not inspected_idxs or inspected_idxs[-1] != current_idx:
-                                            inspected_idxs.append(current_idx)
-                                            inspected_times.append(now_t)           
-                                            
+                                            cand_idx = random.choice(pool)
+                                            # promote candidate to target; demote old target
+                                            gabors[cand_idx].ori = target_orientation
+                                            gabors[cand_idx].sf  = target_sf
+                                            gabors[tgt_idx].ori  = random.choice(orientations)
+                                            gabors[tgt_idx].sf   = random.choice(spatial_frequencies)
+                                            tgt_idx = cand_idx
+                                            nback_used_seq.append('RND')
+                                            target_traj.append(pos[tgt_idx])
 
-                                # n-back retargeting: ONLY after reveal
-                                if armed and tp and (trial_k != ''):
-                                    k = int(trial_k)
-                                    # Use history excluding the *current* fixation to avoid 0-back
-                                    prior_len = len(inspected_idxs) - 1
-                                    if prior_len >= k:
-                                        cand_hist_idx = prior_len - k          # index in inspected_* arrays
-                                        cand_idx      = inspected_idxs[cand_hist_idx]
-                                        
+                                            # SCORE: log jump (for press-near-previous forgiveness)
+                                            if prev_target_pos_c is not None:
+                                                score_prev_target_pos_c = prev_target_pos_c
+                                                score_target_change_time = now_t
+                                    else:
+                                        # n-back = 1,2,4
+                                        k = int(trial_k)
+                                        prior_len = len(inspected_idxs)  # history up to the last committed fixation
+                                        if prior_len >= k:
+                                            cand_hist_idx = prior_len - k
+                                            cand_idx      = inspected_idxs[cand_hist_idx]
+                                            cand_time     = inspected_times[cand_hist_idx]
+                                            if cand_idx != tgt_idx:
+                                                # SOA & separation checks
+                                                age_ok = (now_t - cand_time) >= holdoff_by_k.get(k, 0.0)
+                                                gaze_x = cluster_cx - sw/2.0
+                                                gaze_y =  sh/2.0 - cluster_cy
+                                                dx = centers_pix[cand_idx][0] - gaze_x
+                                                dy = centers_pix[cand_idx][1] - gaze_y
+                                                sep_ok = (dx*dx + dy*dy) >= (min_gaze_sep_px * min_gaze_sep_px)
+                                                if age_ok and sep_ok:
+                                                    # SCORE: remember previous target position before swap
+                                                    prev_target_pos_c = gabors[tgt_idx].pos if tgt_idx is not None else None
 
-                                        if cand_idx != tgt_idx:
-                                            # (a) SOA since that fixation 
-                                            # (b) small separation from current gaze:
-                                            gaze_x = cluster_cx - sw/2.0
-                                            gaze_y =  sh/2.0  - cluster_cy
-                                            dx = centers_pix[cand_idx][0] - gaze_x
-                                            dy = centers_pix[cand_idx][1] - gaze_y
-                                            sep_ok = (dx*dx + dy*dy) >= (min_gaze_sep_px * min_gaze_sep_px)
+                                                    gabors[cand_idx].ori = target_orientation
+                                                    gabors[cand_idx].sf  = target_sf
+                                                    gabors[tgt_idx].ori  = random.choice(orientations)
+                                                    gabors[tgt_idx].sf   = random.choice(spatial_frequencies)
+                                                    tgt_idx = cand_idx
+                                                    nback_used_seq.append(k)
+                                                    target_traj.append(pos[tgt_idx])
 
-                                            if sep_ok:
-                                                # jump + mask 
-                                                gabors[cand_idx].ori = target_orientation
-                                                gabors[cand_idx].sf  = target_sf
-                                                gabors[tgt_idx].ori  = random.choice(orientations)
-                                                gabors[tgt_idx].sf   = random.choice(spatial_frequencies)
-                                                tgt_idx = cand_idx
-                                                nback_used_seq.append(k)
-                                                refresh_all_distractors(exclude_idx=tgt_idx)
-                                                # log this jump landing (grid coords)
-                                                target_traj.append(pos[tgt_idx])
+                                                    # SCORE: log jump (for press-near-previous forgiveness)
+                                                    if prev_target_pos_c is not None:
+                                                        score_prev_target_pos_c = prev_target_pos_c
+                                                        score_target_change_time = now_t
 
-                            # start new cluster
+                                # --- (B) Global camo mask on every fixation departure ---
+                                refresh_all_distractors(exclude_idx=tgt_idx)
+                        
+                            # reset cluster for next fixation
                             cluster_cx, cluster_cy = prev_gx, prev_gy
                             cluster_len = 1
                             committed_this_cluster = False
+
 
                 # draw scene
                 noise_stim.draw()
                 for g in gabors: g.draw()
                 win.flip()
 
-                keys = event.getKeys(keyList=['right','left','escape'], timeStamped=clk)
+                keys = event.getKeys(keyList=['space','escape'], timeStamped=clk)
                 if keys:
                     k, t0 = keys[0]
                     if k == 'escape':
                         if el_tracker:
                             el_tracker.sendMessage('stimulus_offset'); el_tracker.stopRecording()
                         return filename
-                    # for CSV file "Response" column, 1 if pressed yes, 0 if no
-                    response = 1 if k=='right' else 0
-                    rt = t0
-                    break
+                    if k == 'space':
+                        response = 1    # pressed SPACE to indicate target seen
+                        rt = t0
+                        break
 
                 core.wait(movement_delay)
 
@@ -430,20 +406,46 @@ def run_evading_target_static_trials(win, el_tracker,
                 el_tracker.stopRecording()
 
 
-            # feedback
+            # feedback (gaze-validated scoring overlay)
             if response is None:
-                # for CSV file "Response" column
+                # timeout
                 fb_text = timeout_feedback_text
-                resp_csv = ''   # leave empty for timeouts
-                rt_str   = ''   # leave empty for RT
+                resp_csv = ''    # leave empty for timeouts
+                rt_str   = ''    # leave empty for RT
                 corr     = 0
             else:
-                # response is 1 for 'right' (target), 0 for 'left' (distractor)
-                corr = int((response == 1 and tp) or (response == 0 and not tp))
-                # feedback on screen for participant
-                fb_text = 'Correct' if corr else 'Incorrect'
-                resp_csv = response  # write 1 or 0 to CSV
-                rt_str = rt
+                # any committed scoring fixation on target during trial?
+                recently_fixated_target = (last_fix_on_target_time is not None)
+
+                # keypress fallback: near current target at press?
+                on_keypress_fixated_target = False
+                if tgt_idx is not None:
+                    tgx, tgy = gabors[tgt_idx].pos  # centered coords
+                    d_curr = ((score_gx_c - tgx)**2 + (score_gy_c - tgy)**2) ** 0.5
+                    if d_curr <= score_accept_radius_px():
+                        on_keypress_fixated_target = True
+
+                # jump forgiveness: shortly after a jump, accept proximity to the previous target
+                near_prev_after_jump = False
+                if (not on_keypress_fixated_target) and (score_prev_target_pos_c is not None):
+                    if (rt - score_target_change_time) <= score_change_grace:
+                        px, py = score_prev_target_pos_c
+                        d_prev = ((score_gx_c - px)**2 + (score_gy_c - py)**2) ** 0.5
+                        if d_prev <= score_accept_radius_px():
+                            near_prev_after_jump = True
+
+                is_correct = recently_fixated_target or on_keypress_fixated_target or near_prev_after_jump
+
+                # fill CSV timing if accepted via fallback
+                if is_correct and (last_fix_on_target_time is None):
+                    last_fix_on_target_time = rt
+                    last_committed_fix_idx  = tgt_idx
+
+                fb_text = 'Correct' if is_correct else 'Incorrect'
+                resp_csv = 1
+                rt_str   = rt
+                corr     = int(is_correct)
+
             
             visual.TextStim(win, text=fb_text, color='white', height=40, units='pix').draw()
             win.flip(); core.wait(feedback_duration)
@@ -451,14 +453,17 @@ def run_evading_target_static_trials(win, el_tracker,
 
 
             writer.writerow([
-                'evading target static task',                           # Task Type
-                participant_id,                                         # Participant ID
-                t+1, int(tp), resp_csv, corr, rt_str,                   # trial meta
-                n, pos,                                                 # layout
-                (target_traj if (tp and len(target_traj)>0) else []),   # full trajectory
-                (trial_k if tp else ''),                                # per-trial n-back condition (blank if absent)
-                nback_used_seq,                                         # ks actually used on each jump
-                fix_log                                                 # Fixations 
+                'evading target static task',
+                participant_id,
+                t+1, int(tp), resp_csv, corr, rt_str,
+                n, pos,
+                (target_traj if len(target_traj)>0 else []),
+                trial_k,                 # per-trial n-back condition (1,2,4,'RND')  
+                nback_used_seq,
+                fix_log,
+                # SCORE:
+                round(last_fix_on_target_time, 4) if last_fix_on_target_time is not None else "",
+                last_committed_fix_idx if last_committed_fix_idx is not None else ""
             ])
 
 
