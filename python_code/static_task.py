@@ -11,7 +11,7 @@ Provides run_static_trials() for calling from main.py after EyeLink setup.
 Displays stationary Gabor arrays on a static Gaussian noise background,
 flashes a fixation cross between trials for 0.5s,
 collects responses during the trial duration window,
-provides feedback between trials.
+provides feedback between trials, incorrect/correct based on gaze coordinates
 """
 
 import os
@@ -32,15 +32,24 @@ def run_static_trials(win, el_tracker,
                       participant_id, timestamp,
                       noise_grain=3):
     """
-    Runs the static Gabor detection task:
-      - Flash fixation (0.5s) between trials
-      - Show static noise + Gabors for `trial_duration`, capture < and > responses
-      - Provide feedback ('Correct', 'Incorrect', or timeout) for `feedback_duration`
+    Runs the static Gabor detection task with history-dependent target placement:
+      - Target is present on every trial.
+      - On each trial, the target location rule is one of:
+            0 = random;
+            1 = same place as last trial;
+            2 = same place as 2 trials ago;
+            3 = same place as 3 trials ago;
+            4 = same place as 4 trials ago.
+        These five rules are used in (as) equal (as possible) amounts, in random order,
+        subject to the obvious constraint that k-back cannot be used before k trials exist.
+      - Participant presses SPACE when they see the target; timeout message otherwise.
+      - Correctness requires gaze fixation near the target (lenient thresholds), or gaze-on-target at keypress.
     """
+    
     sw, sh = screen_width, screen_height
-    out_dir = 'results'
-    os.makedirs(out_dir, exist_ok=True)
-    filename = os.path.join(out_dir, f"results_{participant_id}_{timestamp}.csv")
+    output_dir = 'results'
+    os.makedirs(output_dir, exist_ok=True)
+    filename = os.path.join(output_dir, f"results_{participant_id}_{timestamp}.csv")
 
     # grid offsets
     grid_w = grid_size_x * cell_size
@@ -48,66 +57,175 @@ def run_static_trials(win, el_tracker,
     off_x = -grid_w / 2
     off_y = -grid_h / 2
 
+    # gaze/fixation parameters (re-use same knobs you already have)
+    ema_alpha = 0.5
+    fix_radius_px = max(80, int(cell_size * 1.2))       # more forgiving cluster
+    min_fix_frames = 1                                  # commit quickly
+    capture_radius_px = max(int(cell_size * 3.0), 160)  # large baseline acceptance
+    gaze_to_press_max_lag = trial_duration              # any time during trial counts
+    gauss_k = 6.0                                       # widen based on Gaussian mask
+
+    # single helper, used in both commit + keypress fallback
+    def target_accept_radius_px():
+        # PsychoPy 'gauss' mask: σ ≈ size/6
+        sigma = cell_size / 6.0
+        return max(capture_radius_px, gauss_k * sigma)
+
     # fixation cross (pix units for clarity)
     fix_cross = visual.TextStim(win, text='+', color='black', height=40, units='pix')
 
     # instruction
     inst = visual.TextStim(win,
         text=("In the following experiment, you will see stationary Gabors on noise.\n"
-              "Press '>' if you see the 45° target, '<' if not.\n"
+              "Press SPACE as soon as you see the 45° target.\n"
               "Press Enter to start."),
         color='white', height=30, wrapWidth=sw*0.8, units='pix'
     )
     inst.draw(); win.flip()
     event.waitKeys(keyList=['return'])
+    event.clearEvents(eventType='keyboard')
 
+    # ------- helper: Gaussian noise image -------
     def generate_noise(w, h, grain=noise_grain):
         hg = int(math.ceil(h/grain)); wg = int(math.ceil(w/grain))
         small = np.clip(np.random.normal(0,0.3,(hg,wg)),-1,1)
         noise = np.repeat(np.repeat(small, grain, axis=0), grain, axis=1)
         return noise[:h, :w]
 
+
+    # desired weights
+    weights = (0.60, 0.10, 0.10, 0.10, 0.10)
+    labels  = [0, 1, 2, 3, 4]
+    
+    # turn weights into integer quotas with remainder smoothing
+    raw     = [num_trials * w for w in weights]
+    counts  = [int(math.floor(x)) for x in raw]
+    remain  = num_trials - sum(counts)
+    remaind = np.array(raw) - np.array(counts)
+    for idx in np.argsort(remaind)[::-1][:remain]:
+        counts[idx] += 1
+    quota_left = {lab: cnt for lab, cnt in zip(labels, counts)}
+    
+    # anti-streak + resets
+    warmup_initial = 5      # first 5 trials forced random (k=0)
+    block_size     = 24     # every 24 trials...
+    block_warmup   = 2      # ...inject 2 randoms at block start
+    max_run_same   = 1      # outcome-level rule: allow 0 consecutive repeats of location
+    
+    # track outcome history for anti-streak (target_history already exists)
+    last_target = None
+    run_same    = 0
+
+    def choose_random_grid_not(pos, forbidden=None):
+        allowed = [p for p in pos if (forbidden is None or p != forbidden)]
+        return random.choice(allowed) if allowed else random.choice(pos)
+
+    #placement_schedule = build_weighted_valid_schedule(num_trials, weights=(0.60, 0.10, 0.10, 0.10, 0.10))
+    target_history = []   # list of (gx, gy) grid coords
+
     # open CSV
     with open(filename, 'w', newline='') as f:
         writer = csv.writer(f)
         writer.writerow([
+            'Task Type','Participant ID',
             'Trial','TargetPresent','Response','Correct','RT',
-            'NumGabors','GaborPos','TargetPos'
+            'NumGabors','GaborPos','TargetPos','PlacementRule',
+            'FixOnTargetTime(s)','LastFixIndex'
         ])
 
+        # >>>>>>>>>>>>>>> trial loop <<<<<<<<<<<<<<<
         for t in range(num_trials):
             # flash fixation
             fix_cross.draw(); win.flip(); core.wait(0.5)
+            event.clearEvents(eventType='keyboard')
 
-            # trial setup
-            n = random.choice([5,10,15])
-            tp = random.choice([True, False])
-            # unique positions
+            # target always present
+            tp = True
+            n = random.choice([10])
+
+            # --- choose rule_k adaptively ---
+            in_block_warmup = (block_size and (t % block_size) < block_warmup)
+            if (t < warmup_initial) or in_block_warmup:
+                rule_k = 0
+            else:
+                valid = [0] + list(range(1, min(4, t) + 1))
+            
+                # pool that respects quotas and avoids creating a same-location repeat run
+                pool, wts = [], []
+                for k in valid:
+                    if quota_left.get(k, 0) <= 0:
+                        continue
+            
+                    # would this k place target in the same location as last trial?
+                    would_same = False
+                    if k > 0 and last_target is not None and len(target_history) >= k:
+                        would_same = (target_history[-k] == last_target)
+            
+                    # enforce outcome-level anti-streak
+                    if would_same and run_same >= max_run_same:
+                        continue
+            
+                    pool.append(k)
+                    wts.append(max(1, quota_left.get(k, 0)))
+            
+                # if pool empty, relax quotas first (still enforce anti-streak); then last resort
+                if not pool:
+                    for k in valid:
+                        would_same = False
+                        if k > 0 and last_target is not None and len(target_history) >= k:
+                            would_same = (target_history[-k] == last_target)
+                        if would_same and run_same >= max_run_same:
+                            continue
+                        pool.append(k); wts.append(1)
+            
+                if not pool:
+                    pool, wts = valid, [1]*len(valid)
+            
+                rule_k = random.choices(pool, weights=wts, k=1)[0]
+            
+            # decrement quota if available
+            if quota_left.get(rule_k, 0) > 0:
+                quota_left[rule_k] -= 1
+
             pos = []
-            while len(pos)<n:
-                x = random.randint(2, grid_size_x-3)
-                y = random.randint(2, grid_size_y-3)
-                if (x,y) not in pos: pos.append((x,y))
-            tgt_idx = random.randint(0,n-1) if tp else None
+            
+            if rule_k > 0 and len(target_history) >= rule_k:
+                desired = target_history[-rule_k]  # (gx, gy)
+                pos.append(desired)
+                seen = {desired}
+                while len(pos) < n:
+                    x = random.randint(2, grid_size_x - 3)
+                    y = random.randint(2, grid_size_y - 3)
+                    if (x, y) not in seen:
+                        pos.append((x, y)); seen.add((x, y))
+                tgt_idx = 0
+            else:
+                seen = set()
+                while len(pos) < n:
+                    x = random.randint(2, grid_size_x - 3)
+                    y = random.randint(2, grid_size_y - 3)
+                    if (x, y) not in seen:
+                        pos.append((x, y)); seen.add((x, y))
+                last = target_history[-1] if len(target_history) >= 1 else None
+                target_grid = choose_random_grid_not(pos, forbidden=last)
+                tgt_idx = pos.index(target_grid)
 
-            # prepare Gabors
             gabors = []
             for i in range(n):
-                if i==tgt_idx:
+                if i == tgt_idx:
                     g = visual.GratingStim(win, tex='sin', mask='gauss', size=cell_size,
-                                            sf=target_sf, ori=target_orientation,
-                                            phase=0.25, units='pix')
+                                           sf=target_sf, ori=target_orientation,
+                                           phase=0.25, units='pix')
                 else:
                     g = visual.GratingStim(win, tex='sin', mask='gauss', size=cell_size,
-                                            sf=random.choice(spatial_frequencies),
-                                            ori=random.choice(orientations),
-                                            phase=0.25, units='pix')
+                                           sf=random.choice(spatial_frequencies),
+                                           ori=random.choice(orientations),
+                                           phase=0.25, units='pix')
                 px = off_x + pos[i][0]*cell_size
                 py = off_y + pos[i][1]*cell_size
                 g.pos = (px, py)
                 gabors.append(g)
 
-            # static noise
             noise_img = generate_noise(sw, sh, noise_grain)
             noise_stim = visual.ImageStim(win, image=noise_img,
                                           size=(sw,sh), units='pix', interpolate=False)
@@ -122,41 +240,141 @@ def run_static_trials(win, el_tracker,
                 core.wait(0.1)
                 el_tracker.sendMessage('stimulus_onset')
 
-            # stimulus & response window
+            # draw first stimulus frame
+            noise_stim.draw()
+            for g in gabors: g.draw()
+            win.flip()
+            event.clearEvents(eventType='keyboard')
+
+            # per-trial gaze/cluster state (centered coords)
+            cluster_cx = 0.0
+            cluster_cy = 0.0
+            cluster_len = 0
+            committed_this_cluster = False
+            last_committed_fix_idx = None
+            last_fix_on_target_time = None
+            ema_x = sw / 2.0  # screen coords buffer
+            ema_y = sh / 2.0
+
+            # response loop
             response, rt = None, None
             while clk.getTime() < trial_duration:
                 noise_stim.draw()
                 for g in gabors: g.draw()
                 win.flip()
-                keys = event.getKeys(keyList=['right','left','escape'], timeStamped=clk)
+
+                # gaze sampling → smoothing → convert to centered coords → fixation commit
+                if el_tracker:
+                    s = el_tracker.getNewestSample()
+                    eye = None
+                    if s and s.isRightSample():
+                        eye = s.getRightEye()
+                    elif s and s.isLeftSample():
+                        eye = s.getLeftEye()
+
+                    now_t = clk.getTime()
+
+                    if eye is not None:
+                        rx, ry = eye.getGaze()  # EyeLink screen coords (0,0=top-left, +y down)
+                        if (rx is not None and ry is not None and rx > -1e5 and ry > -1e5):
+                            ema_x = float(np.clip(ema_alpha*rx + (1-ema_alpha)*ema_x, 0, sw-1))
+                            ema_y = float(np.clip(ema_alpha*ry + (1-ema_alpha)*ema_y, 0, sh-1))
+                            # convert to PsychoPy-centered coords (0,0=center, +y up)
+                            gx = ema_x - (sw/2.0)
+                            gy = (sh/2.0) - ema_y
+
+                            dx = gx - cluster_cx
+                            dy = gy - cluster_cy
+                            inside = (dx*dx + dy*dy) <= (fix_radius_px*fix_radius_px)
+
+                            if inside:
+                                cluster_len += 1
+                                w = 1.0 / max(1, cluster_len)
+                                cluster_cx = (1 - w)*cluster_cx + w*gx
+                                cluster_cy = (1 - w)*cluster_cy + w*gy
+
+                                if (not committed_this_cluster) and (cluster_len >= min_fix_frames):
+                                    centers = np.array([gg.pos for gg in gabors], dtype=float)
+                                    if centers.size > 0:
+                                        d2 = (centers[:,0]-cluster_cx)**2 + (centers[:,1]-cluster_cy)**2
+                                        j = int(np.argmin(d2))
+                                        current_idx = None
+                                        # use your helper; slight boost for leniency
+                                        if np.sqrt(d2[j]) <= 1.25 * target_accept_radius_px():
+                                            current_idx = j
+                                        if current_idx is not None:
+                                            last_committed_fix_idx = current_idx
+                                            if current_idx == tgt_idx:
+                                                last_fix_on_target_time = now_t
+                                    committed_this_cluster = True
+                            else:
+                                cluster_len = 1
+                                cluster_cx = gx
+                                cluster_cy = gy
+                                committed_this_cluster = False
+
+                keys = event.getKeys(keyList=['space','escape'], timeStamped=clk)
                 if keys:
                     k, t0 = keys[0]
-                    if k=='escape': return filename
-                    response = 'target' if k=='right' else 'distractor'
-                    rt = t0
-                    break
+                    if k == 'escape':
+                        if el_tracker:
+                            el_tracker.sendMessage('stimulus_offset'); el_tracker.stopRecording()
+                        return filename
+                    if k == 'space':
+                        response = 'space'
+                        rt = t0
+                        break
                 core.wait(movement_delay)
 
             if el_tracker:
                 el_tracker.sendMessage('stimulus_offset')
                 el_tracker.stopRecording()
 
-            # feedback between trials
+            # feedback uses gaze-based correctness (lenient)
             if response is None:
                 fb_text = timeout_feedback_text
                 resp_str = 'None'; rt_str = ''
                 corr = 0
             else:
-                corr = int((response=='target')==tp)
-                fb_text = 'Correct' if corr else 'Incorrect'
-                resp_str = response; rt_str = rt
+                recently_fixated_target = (last_fix_on_target_time is not None) and \
+                                          ((rt - last_fix_on_target_time) <= gaze_to_press_max_lag)
+
+                # keypress fallback: was gaze near target *at press*?
+                on_keypress_fixated_target = False
+                tgx, tgy = gabors[tgt_idx].pos
+                gaze_x_at_press = cluster_cx if 'gx' not in locals() else gx
+                gaze_y_at_press = cluster_cy if 'gy' not in locals() else gy
+                d_key = ((gaze_x_at_press - tgx)**2 + (gaze_y_at_press - tgy)**2) ** 0.5
+                if d_key <= 1.25 * target_accept_radius_px():
+                    on_keypress_fixated_target = True
+                    if last_fix_on_target_time is None:
+                        last_fix_on_target_time = rt
+                        last_committed_fix_idx = tgt_idx
+
+                is_correct = recently_fixated_target or on_keypress_fixated_target
+                fb_text = 'Correct' if is_correct else 'Incorrect'
+                resp_str = 'space'; rt_str = rt
+                corr = int(is_correct)
+
             fb = visual.TextStim(win, text=fb_text, color='white', height=40, units='pix')
             fb.draw(); win.flip(); core.wait(feedback_duration)
+            event.clearEvents(eventType='keyboard')
 
-            # log
+            target_grid = pos[tgt_idx]
+            target_history.append(target_grid)
+            
+            same_outcome = (last_target is not None) and (target_grid == last_target)
+            run_same     = (run_same + 1) if same_outcome else 0
+            last_target  = target_grid
+
+
             writer.writerow([
-                t+1, int(tp), resp_str, corr, rt_str,
-                n, pos, (pos[tgt_idx] if tgt_idx is not None else None)
+                'static task', participant_id,
+                t+1, int(tp),
+                resp_str, corr, rt_str,
+                n, pos, target_grid, rule_k,
+                round(last_fix_on_target_time, 4) if last_fix_on_target_time is not None else "",
+                last_committed_fix_idx if last_committed_fix_idx is not None else ""
             ])
 
     return filename
