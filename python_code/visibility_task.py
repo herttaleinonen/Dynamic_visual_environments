@@ -1,22 +1,23 @@
 # visibility_task.py
 # -*- coding: utf-8 -*-
+# author Hertta Leinonen
 
 """
-Created on Wed Jul 30 12:20:11 2025
-
-@author: herttaleinonen
+visibility_task.py
 
 Provides run_visibility_trials() for calling from main.py after EyeLink setup.
 Generates a visibility map by presenting single Gabor stimuli on a static Gaussian noise background,
 collects responses via arrow keys, logs results to CSV.
 Preserves all original stimulus parameters and response logic.
 """
+
 import os
 import random
 import math
 import csv
 import numpy as np
 from psychopy import visual, core, event
+
 
 
 def run_visibility_trials(win, el_tracker, screen_width, screen_height,
@@ -49,27 +50,50 @@ def run_visibility_trials(win, el_tracker, screen_width, screen_height,
     distances_deg = [3, 6, 12, 20]
     orientation_diffs = [-45, -25, 0, 25, 45]
     target_orientation = 45
-    n_reps = 1  # should be 20 in full version
     fixation_duration = 0.5
     stimulus_duration = 0.2
     gabor_size_deg = 1.0
     noise_grain = 5
 
-    # build trials
-    trials = []
+    # --- build trials from config.num_trials, balanced by condition ---
+    try:
+        from config import num_trials as desired_trials
+    except Exception:
+        desired_trials = 150  # sensible fallback if not in config
+
+    # all condition combos (4 ecc × 5 diffs = 20)
+    combos = []
     for ecc in distances_deg:
         for diff in orientation_diffs:
-            stim_type = 'target' if diff == 0 else 'distractor'
-            trials.append({'ecc': ecc,
-                           'ori': target_orientation + diff,
-                           'type': stim_type})
-    trials *= n_reps
-    random.shuffle(trials)
+            combos.append({
+                'ecc': ecc,
+                'ori': target_orientation + diff,
+                'type': ('target' if diff == 0 else 'distractor'),
+            })
+
+    conds_per_block = len(combos)  # 20
+    full_blocks, remainder = divmod(desired_trials, conds_per_block)
+
+    trials = []
+    rng = random.Random()  # independent shuffler
+
+    # add full balanced blocks
+    for _ in range(full_blocks):
+        block = combos[:]   # copy
+        rng.shuffle(block)  # shuffle within block
+        trials.extend(block)
+
+    # add partial block for leftover trials (still randomized)
+    if remainder:
+        partial = combos[:]
+        rng.shuffle(partial)
+        trials.extend(partial[:remainder])
+    # -------------------------------------------------------------------
 
     # setup stimuli
-    # fixation cross
+    # fixation cross (degrees)
     fixation = visual.TextStim(win, text='+', height=1, color='black', units='deg')
-    # Gabor (no explicit color override)
+    # Gabor (degrees)
     gabor = visual.GratingStim(
         win,
         tex='sin', mask='gauss', size=gabor_size_deg,
@@ -78,10 +102,14 @@ def run_visibility_trials(win, el_tracker, screen_width, screen_height,
 
     # generate one static noise image per trial
     def generate_noise():
+        # how many grains fit vertically/horizontally
         h_grains = int(math.ceil(screen_height_pix / noise_grain))
         w_grains = int(math.ceil(screen_width_pix  / noise_grain))
+        # generate small map and clip
         small = np.clip(np.random.normal(0, 0.3, (h_grains, w_grains)), -1, 1)
+        # upsample by block-replication
         noise = np.repeat(np.repeat(small, noise_grain, axis=0), noise_grain, axis=1)
+        # crop to exact screen dimensions
         return noise[:screen_height_pix, :screen_width_pix]
 
     # run experiment
@@ -129,6 +157,8 @@ def run_visibility_trials(win, el_tracker, screen_width, screen_height,
             question = visual.TextStim(win, text='?', height=1, color='black', units='deg')
             question.draw()
             win.flip()
+
+            event.clearEvents(eventType='keyboard')  # clear stray keys before collecting response
             response = None
             rt = None
             while response is None:
@@ -148,8 +178,8 @@ def run_visibility_trials(win, el_tracker, screen_width, screen_height,
             correct = int(response == tr['type'])
             writer.writerow([
                 i, tr['ecc'], round(angle, 2), tr['ori'],
-                tr['type'], round(x_deg,2), round(y_deg,2),
-                response, correct, round(rt,4)
+                tr['type'], round(x_deg, 2), round(y_deg, 2),
+                response, correct, round(rt, 4)
             ])
 
     return filename
