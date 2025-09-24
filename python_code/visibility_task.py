@@ -1,14 +1,16 @@
 #!/usr/bin/env python3
+# visibility_task.py
 # -*- coding: utf-8 -*-
+
 """
 Created on Tue Aug 5 12:34:21 2025
 
 @author: herttaleinonen
 
-    Run visibility mapping and record EyeLink only during the stimulus window.
-    esponses are keyboard-only (RIGHT=target, LEFT=distractor).
-
+    Run visibility mapping and record EyeLink during the stimulus window.
+    Responses are right/left arrow on keyboard or keys 1 and 3 on Cedrus.
 """
+
 import os
 import random
 import math
@@ -16,44 +18,122 @@ import csv
 import numpy as np
 from psychopy import visual, core, event
 
+# ---------- Optional Cedrus support ----------
+try:
+    import pyxid2
+except Exception:
+    pyxid2 = None
+
+def _cedrus_open():
+    if pyxid2 is None:
+        return None
+    try:
+        devs = pyxid2.get_xid_devices()
+        if not devs:
+            return None
+        dev = devs[0]
+        if hasattr(dev, "reset_timer"):
+            dev.reset_timer()
+        else:
+            if hasattr(dev, "reset_base_timer"): dev.reset_base_timer()
+            if hasattr(dev, "reset_rt_timer"):   dev.reset_rt_timer()
+        if hasattr(dev, "clear_response_queue"):
+            dev.clear_response_queue()
+        return dev
+    except Exception as e:
+        print(f"[Cedrus] init failed: {e}")
+        return None
+
+def _cedrus_flush(dev, dur=0.12):
+    if not dev:
+        return
+    try:
+        t0 = core.getTime()
+        while (core.getTime() - t0) < dur:
+            if hasattr(dev, "poll_for_response"):
+                dev.poll_for_response()
+            while dev.has_response():
+                dev.get_next_response()
+            core.wait(0.005)
+        if hasattr(dev, "clear_response_queue"):
+            dev.clear_response_queue()
+    except Exception as e:
+        print(f"[Cedrus] flush failed: {e}")
+
+def _cedrus_any_pressed(dev):
+    if not dev:
+        return False
+    try:
+        if hasattr(dev, "poll_for_response"):
+            dev.poll_for_response()
+        any_pressed = False
+        while dev.has_response():
+            r = dev.get_next_response()
+            if r and r.get("pressed", False):
+                any_pressed = True
+        if hasattr(dev, "clear_response_queue"):
+            dev.clear_response_queue()
+        return any_pressed
+    except Exception as e:
+        print(f"[Cedrus] poll failed: {e}")
+        return False
+
+def _cedrus_get_choice(dev):
+    """
+    Returns 'target' for GREEN (key 3), 'distractor' for RED (key 1), or None.
+    """
+    if not dev:
+        return None
+    try:
+        if hasattr(dev, "poll_for_response"):
+            dev.poll_for_response()
+        choice = None
+        while dev.has_response():
+            r = dev.get_next_response()
+            if not r or not r.get("pressed", False):
+                continue
+            k = r.get("key", None)
+            if k == 3:
+                choice = 'target'
+            elif k == 1:
+                choice = 'distractor'
+        if hasattr(dev, "clear_response_queue"):
+            dev.clear_response_queue()
+        return choice
+    except Exception as e:
+        print(f"[Cedrus] read failed: {e}")
+        return None
+# --------------------------------------------
+
 def run_visibility_trials(win, el_tracker, screen_width, screen_height,
                           participant_id, timestamp):
-    
-    # Pixel dimensions for the window
     screen_width_pix  = screen_width
     screen_height_pix = screen_height
 
-    # Output path
     output_dir = 'results'
     os.makedirs(output_dir, exist_ok=True)
     filename = os.path.join(output_dir, f"visibility_{participant_id}_{timestamp}.csv")
 
-    # ---- Params from config (safe fallbacks if missing) ----
     try:
         from config import (
-            cell_size,            # px/deg (1 cell ≈ 1 deg)
-            target_orientation,   # e.g., 45
-            target_sf,            # cycles/pixel
-            num_trials            # total trials desired
+            cell_size, target_orientation, target_sf, num_trials
         )
     except Exception:
         cell_size = 35.0
         target_orientation = 45
-        target_sf = 1.0 / (cell_size / 2.0)  # ~2 cycles per cell
+        target_sf = 1.0 / (cell_size / 2.0)
         num_trials = 150
 
     px_per_deg   = float(cell_size)
-    sf_cpd       = float(target_sf) * px_per_deg  # cycles/deg
-    gabor_size_d = 1.0  # ≈ one deg
+    sf_cpd       = float(target_sf) * px_per_deg
+    gabor_size_d = 1.0
 
-    # Core task parameters
     distances_deg     = [3, 6, 12, 20]
     orientation_diffs = [-45, -25, 0, 25, 45]
     fixation_duration = 0.5
     stimulus_duration = 0.2
-    noise_grain       = 3  # px
+    noise_grain       = 3
 
-    # ---- Build balanced trials (blocks of all ecc×ori diffs) ----
     combos = []
     for ecc in distances_deg:
         for diff in orientation_diffs:
@@ -62,7 +142,7 @@ def run_visibility_trials(win, el_tracker, screen_width, screen_height,
                 'ori':  target_orientation + diff,
                 'type': ('target' if diff == 0 else 'distractor'),
             })
-    conds_per_block = len(combos)  # 20
+    conds_per_block = len(combos)
     full_blocks, remainder = divmod(int(num_trials), conds_per_block)
 
     trials = []
@@ -76,18 +156,17 @@ def run_visibility_trials(win, el_tracker, screen_width, screen_height,
         rng.shuffle(partial)
         trials.extend(partial[:remainder])
 
-    # ---- Stimuli ----
+    cedrus = _cedrus_open()
+    if cedrus:
+        print("[Cedrus] Connected. GREEN(key 3)=Yes, RED(key 1)=No.")
+    else:
+        print("[Cedrus] Not found (or pyxid2 missing). Keyboard only.")
+
     fixation = visual.TextStim(win, text='+', height=1, color='black', units='deg')
 
     gabor = visual.GratingStim(
-        win,
-        tex='sin', mask='gauss',
-        size=gabor_size_d,
-        sf=sf_cpd,                    # cycles/deg
-        ori=0,
-        units='deg',
-        phase=0.25,
-        contrast=1.0
+        win, tex='sin', mask='gauss', size=gabor_size_d,
+        sf=sf_cpd, ori=0, units='deg', phase=0.25, contrast=1.0
     )
 
     def generate_noise():
@@ -97,15 +176,13 @@ def run_visibility_trials(win, el_tracker, screen_width, screen_height,
         noise = np.repeat(np.repeat(small, noise_grain, axis=0), noise_grain, axis=1)
         return noise[:screen_height_pix, :screen_width_pix]
 
-    # ---- Instruction screen with examples (unchanged UI) ----
     inst = visual.TextStim(
         win,
         text=("In this task, a single Gabor object will briefly appear on static noise at different eccentricities.\n"
-              "If it is the TARGET (45° tilt), press RIGHT ARROW.\n"
-              "If it is a DISTRACTOR (any other tilt), or you did not see the object, press LEFT ARROW.\n"
-              "Try to respond quickly and accurately.\n"
+              "If it is the TARGET (45° tilt), press GREEN button.\n"
+              "If it is a DISTRACTOR (any other tilt), or you did not see the object, press RED button.\n"
               "Between trials there is a cross in the middle of the screen, try to focus your eyes there.\n"
-              "Press Enter to start."),
+              "Press any button to start." ),
         color='white', height=30, wrapWidth=screen_width_pix * 0.85, units='pix',
         pos=(0, screen_height_pix * 0.24)
     )
@@ -150,8 +227,64 @@ def run_visibility_trials(win, el_tracker, screen_width, screen_height,
     for s in example_stims: s.draw()
     lab_d.draw(); lab_t.draw()
     win.flip()
-    event.waitKeys(keyList=['return', 'enter'])
+
+    if cedrus:
+        while True:
+            if _cedrus_any_pressed(cedrus):
+                break
+            keys = event.getKeys(keyList=['return', 'enter', 'escape'])
+            if 'escape' in keys:
+                return filename
+            if keys:
+                break
+            core.wait(0.01)
+        _cedrus_flush(cedrus)
+    else:
+        event.waitKeys(keyList=['return', 'enter'])
     event.clearEvents(eventType='keyboard')
+
+    def measure_fixation_drift(trial_idx, duration=0.5, bg=None):
+        if not el_tracker:
+            t0 = core.Clock()
+            while t0.getTime() < duration:
+                if bg: bg.draw()
+                fixation.draw()
+                win.flip()
+            return ""
+        try:
+            el_tracker.setOfflineMode()
+            el_tracker.sendMessage(f'FIXCHECK_START {trial_idx}')
+            el_tracker.startRecording(1, 1, 1, 1)
+            core.wait(0.1)
+        except Exception:
+            t0 = core.Clock()
+            while t0.getTime() < duration:
+                if bg: bg.draw()
+                fixation.draw()
+                win.flip()
+            return ""
+        samples = []
+        clk_fix = core.Clock()
+        while clk_fix.getTime() < duration:
+            if bg: bg.draw()
+            fixation.draw()
+            win.flip()
+            s = el_tracker.getNewestSample()
+            eye = s.getRightEye() if (s and s.isRightSample()) else (s.getLeftEye() if (s and s.isLeftSample()) else None)
+            if eye is not None:
+                rx, ry = eye.getGaze()
+                if (rx is not None and ry is not None and rx > -1e5 and ry > -1e5):
+                    gx = float(rx) - (screen_width_pix / 2.0)
+                    gy = (screen_height_pix / 2.0) - float(ry)
+                    dist_deg = float(np.hypot(gx, gy)) / float(px_per_deg)
+                    samples.append(dist_deg)
+            core.wait(0.005)
+        try:
+            el_tracker.sendMessage('FIXCHECK_END')
+            el_tracker.stopRecording()
+        except Exception:
+            pass
+        return round(float(np.median(samples)), 3) if samples else ""
 
     # ---------------------------- Run trials ----------------------------
     with open(filename, 'w', newline='') as csvfile:
@@ -159,11 +292,13 @@ def run_visibility_trials(win, el_tracker, screen_width, screen_height,
         writer.writerow([
             'trial', 'ecc_deg', 'angle_deg', 'orientation_deg',
             'stim_type', 'x_pos_deg', 'y_pos_deg',
-            'response', 'correct', 'rt'
+            'response', 'correct', 'rt', 'CalibrationDrift(deg)'
         ])
 
         for i, tr in enumerate(trials, start=1):
-            # New static noise per trial
+            # ground-truth as numeric (1=target, 0=distractor)
+            stim_num = 1 if tr['type'] == 'target' else 0
+
             noise_img = generate_noise()
             noise_stim = visual.ImageStim(
                 win, image=noise_img,
@@ -171,20 +306,19 @@ def run_visibility_trials(win, el_tracker, screen_width, screen_height,
                 units='pix', interpolate=False
             )
 
-            # 1) Fixation
-            noise_stim.draw()
-            fixation.draw()
-            win.flip()
-            core.wait(fixation_duration)
+            # 1) Fixation + drift
+            drift_deg = measure_fixation_drift(i, duration=fixation_duration, bg=noise_stim)
+            event.clearEvents(eventType='keyboard')
+            if cedrus:
+                _cedrus_flush(cedrus)
 
-            # 2) Random polar position at desired eccentricity
+            # 2) Stim position
             angle = random.uniform(0, 360)
             x_deg = tr['ecc'] * math.cos(math.radians(angle))
             y_deg = tr['ecc'] * math.sin(math.radians(angle))
 
-            # 3) Stimulus on noise — EyeLink recording strictly over the stimulus window
+            # 3) Stimulus (record EyeLink only during stimulus)
             clock = core.Clock()
-
             if el_tracker:
                 el_tracker.setOfflineMode()
                 el_tracker.sendCommand('clear_screen 0')
@@ -200,7 +334,6 @@ def run_visibility_trials(win, el_tracker, screen_width, screen_height,
                 gabor.pos = (x_deg, y_deg)
                 gabor.draw()
                 win.flip()
-
                 if first_frame and el_tracker:
                     el_tracker.sendMessage('stimulus_onset')
                     first_frame = False
@@ -209,30 +342,41 @@ def run_visibility_trials(win, el_tracker, screen_width, screen_height,
                 el_tracker.sendMessage('stimulus_offset')
                 el_tracker.stopRecording()
 
-            # 4) Response screen (keyboard only)
+            # 4) Response screen (Cedrus or keyboard), RT on same clock
             noise_stim.draw()
-            question = visual.TextStim(win, text='?', height=1, color='black', units='deg')
-            question.draw()
+            visual.TextStim(win, text='?', height=1, color='black', units='deg').draw()
             win.flip()
 
-            event.clearEvents(eventType='keyboard')
+            if cedrus:
+                _cedrus_flush(cedrus)
+
             response = None
             rt = None
             while response is None:
-                keys = event.waitKeys(keyList=['left', 'right', 'escape'], timeStamped=clock)
-                if not keys:
-                    continue
-                key, key_time = keys[0]
-                if key == 'escape':
-                    return filename
-                response = 'target' if key == 'right' else 'distractor'
-                rt = key_time
+                if cedrus:
+                    choice = _cedrus_get_choice(cedrus)
+                    if choice in ('target', 'distractor'):
+                        response = choice
+                        rt = clock.getTime()
+                        break
+                keys = event.getKeys(keyList=['left', 'right', 'escape'], timeStamped=clock)
+                if keys:
+                    key, key_time = keys[0]
+                    if key == 'escape':
+                        return filename
+                    response = 'target' if key == 'right' else 'distractor'
+                    rt = key_time
+                    break
+                core.wait(0.005)
 
-            correct = int(response == tr['type'])
+            # numeric response & correctness
+            resp_num = 1 if response == 'target' else 0
+            correct  = int(resp_num == stim_num)
+
             writer.writerow([
                 i, tr['ecc'], round(angle, 2), tr['ori'],
-                tr['type'], round(x_deg, 2), round(y_deg, 2),
-                response, correct, round(rt, 4)
+                stim_num, round(x_deg, 2), round(y_deg, 2),
+                resp_num, correct, round(rt, 4), drift_deg
             ])
 
     return filename
