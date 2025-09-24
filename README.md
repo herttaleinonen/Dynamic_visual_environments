@@ -1,6 +1,6 @@
 # Running the experiment
 
-Requires python3 and PsychoPy (version 2024.2.4 or newer).
+Requires python3 (3.10.0) and PsychoPy (version 2024.2.4).
 
 Requires EyeLink 1000 Plus + pylink to run with eye tracking. 
 
