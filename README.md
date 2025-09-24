@@ -6,7 +6,7 @@ Requires EyeLink 1000 Plus + pylink to run with eye tracking.
 
 Optional Cedrus response box support (requires RB-530 or similar and pyxid2). 
 
-Run main.py through PsychoPy Coder. 
+To run main.py through PsychoPy Coder, place EyeLinkCoreGraphicsPsychoPy.py (from SR research) into the project folder. 
 
 
 
