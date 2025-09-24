@@ -7,8 +7,7 @@ Created on Wed Sep 10 14:11:20 2025
 
     Task for calibration check: 4 black squares on gray background.
     Participant moves a white '+' with their eyes; each square 'captures' with a short dwell.
-    No timeout: runs until ESC. Completion is evaluated at ESC (all 4 captured or not).
-    
+    No timeout: runs until button press (ESC/any Cedrus button). Completion is evaluated at button press (all 4 captured or not).
 """
 
 import os
@@ -16,14 +15,84 @@ import csv
 import numpy as np
 from psychopy import visual, core, event
 
+# ---------- Optional Cedrus support ----------
+try:
+    import pyxid2
+except Exception:
+    pyxid2 = None
+
+def _cedrus_open():
+    """Return first Cedrus device or None. Never raises."""
+    if pyxid2 is None:
+        return None
+    try:
+        devs = pyxid2.get_xid_devices()
+        if not devs:
+            return None
+        dev = devs[0]
+        if hasattr(dev, "reset_base_timer"): dev.reset_base_timer()
+        if hasattr(dev, "reset_rt_timer"):   dev.reset_rt_timer()
+        if hasattr(dev, "clear_response_queue"): dev.clear_response_queue()
+        return dev
+    except Exception as e:
+        print(f"[Cedrus] init failed: {e}")
+        return None
+
+def _cedrus_any_pressed(dev) -> bool:
+    """True if any Cedrus key press event is queued (drains batch)."""
+    if not dev:
+        return False
+    try:
+        if hasattr(dev, "poll_for_response"):
+            dev.poll_for_response()
+        if not dev.has_response():
+            return False
+        pressed_seen = False
+        # Drain all currently queued events and detect any 'pressed'
+        while dev.has_response():
+            r = dev.get_next_response()
+            if bool(r.get("pressed", False)):   # default False to ignore releases
+                pressed_seen = True
+        if hasattr(dev, "clear_response_queue"):
+            dev.clear_response_queue()
+        return pressed_seen
+    except Exception as e:
+        print(f"[Cedrus] poll failed: {e}")
+        return False
+
+def _cedrus_flush(dev, dur=0.12):
+    """Drain any pending Cedrus events for ~dur seconds."""
+    if not dev:
+        return
+    try:
+        t0 = core.getTime()
+        while (core.getTime() - t0) < dur:
+            if hasattr(dev, "poll_for_response"):
+                dev.poll_for_response()
+            while dev.has_response():
+                dev.get_next_response()
+            core.wait(0.005)
+        if hasattr(dev, "clear_response_queue"):
+            dev.clear_response_queue()
+    except Exception as e:
+        print(f"[Cedrus] flush failed: {e}")
+# --------------------------------------------
+
 def run_square_test(win, el_tracker,
-                               screen_width, screen_height,
-                               participant_id, timestamp):
+                    screen_width, screen_height,
+                    participant_id, timestamp):
 
     sw, sh = screen_width, screen_height
     out_dir = "results"
     os.makedirs(out_dir, exist_ok=True)
     filename = os.path.join(out_dir, f"results_{participant_id}_{timestamp}.csv")
+
+    # Open Cedrus (optional)
+    cedrus = _cedrus_open()
+    if cedrus:
+        print("[Cedrus] Connected. Any button will start/end.")
+    else:
+        print("[Cedrus] Not found (or pyxid2 missing). Keyboard fallback enabled.")
 
     # ---- visuals ----
     bg = visual.Rect(win, width=sw, height=sh, pos=(0, 0), units='pix',
@@ -51,21 +120,44 @@ def run_square_test(win, el_tracker,
 
     gaze_cross = visual.TextStim(win, text='+', color='white', height=40, units='pix')
 
-    inst = visual.TextStim(win,
-        text=("Gaze test:\n\n"
-              "Move your eyes to place the white '+' on each of the four black squares.\n"
-              "Hold briefly to capture—squares turn green when captured.\n"
-              "Order doesn't matter.\n\n"
-              "Press Enter to start. Press ESC to end at any time."),
-        color='white', height=30, wrapWidth=sw*0.8, units='pix'
+    # Instruction text varies if Cedrus is present
+    inst_text = (
+        "Gaze test:\n\n"
+        "Move your eyes to place the white '+' on each of the four black squares.\n"
+        "Hold briefly to capture—squares turn green when captured.\n"
+        "Order doesn't matter.\n\n"
+        + ("Press any Cedrus button to start. Press any Cedrus button to end."
+           if cedrus else
+           "Press Enter to start. Press ESC to end at any time.")
     )
-    done_hint = visual.TextStim(win,
-        text="All squares captured — press ESC to end.",
+    inst = visual.TextStim(win, text=inst_text,
+                           color='white', height=30, wrapWidth=sw*0.8, units='pix')
+
+    done_hint = visual.TextStim(
+        win,
+        text=("All squares captured — press any Cedrus button to end."
+              if cedrus else
+              "All squares captured — press ESC to end."),
         color='white', height=28, pos=(0, -sh*0.35), units='pix'
     )
 
+    # ---- Instruction screen + start gate ----
     inst.draw(); win.flip()
-    event.waitKeys(keyList=['return'])
+
+    if cedrus:
+        # Non-blocking start gate: Cedrus OR ESC fallback
+        while True:
+            if _cedrus_any_pressed(cedrus):
+                break
+            keys = event.getKeys(keyList=['return', 'enter', 'escape'])
+            if 'escape' in keys:
+                return filename
+            if keys:  # allow Enter fallback
+                break
+            core.wait(0.01)
+        _cedrus_flush(cedrus)
+    else:
+        event.waitKeys(keyList=['return', 'enter'])
     event.clearEvents(eventType='keyboard')
 
     # ---- gaze params (EMA in screen coords) ----
@@ -87,6 +179,8 @@ def run_square_test(win, el_tracker,
         ])
 
         clk = core.Clock()
+        # debounce so the same start press can't immediately end
+        cedrus_arm_time = clk.getTime() + 0.12
 
         # EyeLink start
         if el_tracker:
@@ -97,7 +191,7 @@ def run_square_test(win, el_tracker,
             core.wait(0.1)
             el_tracker.sendMessage('stimulus_onset')
 
-        # ---- main loop: no timeout; ESC to end ----
+        # ---- main loop: no timeout; ends on Cedrus (any) or ESC ----
         while True:
             # gaze sample & smoothing (screen coords)
             if el_tracker:
@@ -138,15 +232,20 @@ def run_square_test(win, el_tracker,
             bg.draw()
             for sq in squares:
                 sq.draw()
-            # show a subtle hint once all four are captured
             if all(captured):
                 done_hint.draw()
             gaze_cross.draw()
             win.flip()
 
-            # ESC to end at any time
+            # --- END CONDITIONS ---
+            # Cedrus: any button ends (after arm time)
+            if cedrus and clk.getTime() >= cedrus_arm_time and _cedrus_any_pressed(cedrus):
+                break
+            # Keyboard fallback: ESC ends
             if event.getKeys(keyList=['escape']):
                 break
+
+            core.wait(0.01)
 
         total_time = clk.getTime()
 
@@ -161,6 +260,8 @@ def run_square_test(win, el_tracker,
         visual.TextStim(win, text=fb_text, color='white', height=40, units='pix').draw()
         win.flip(); core.wait(1.0)
         event.clearEvents(eventType='keyboard')
+        if cedrus:
+            _cedrus_flush(cedrus)
 
         # CSV row
         writer.writerow([
