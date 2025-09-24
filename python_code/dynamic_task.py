@@ -11,6 +11,7 @@ Created on Wed May 28 11:28:41 2025
     collects responses during the trial duration window,
     provides feedback between trials, incorrect/correct based on gaze coordinates.
 """
+
 import os
 import csv
 import random
@@ -44,9 +45,26 @@ def _cedrus_open():
     except Exception as e:
         print(f"[Cedrus] init failed: {e}")
         return None
+    
+def _cedrus_flush(dev, dur=0.12):
+    """Drain any pending Cedrus events for ~dur seconds."""
+    if not dev:
+        return
+    try:
+        t0 = core.getTime()
+        while (core.getTime() - t0) < dur:
+            if hasattr(dev, "poll_for_response"):
+                dev.poll_for_response()
+            while dev.has_response():
+                dev.get_next_response()  # pop everything
+            core.wait(0.005)
+        if hasattr(dev, "clear_response_queue"):
+            dev.clear_response_queue()
+    except Exception as e:
+        print(f"[Cedrus] flush failed: {e}")
 
 def _cedrus_any_pressed(dev) -> bool:
-    """True if *any* Cedrus key-press event is available (drains one event)."""
+    """True if *any* Cedrus key press event is available (drains one batch)."""
     if not dev:
         return False
     try:
@@ -54,13 +72,21 @@ def _cedrus_any_pressed(dev) -> bool:
             dev.poll_for_response()
         if not dev.has_response():
             return False
-        r = dev.get_next_response()
-        # Consider any press as valid; many firmwares set r['pressed']=True
-        return bool(r.get("pressed", True))
+
+        pressed_seen = False
+        # Drain everything queued this instant and see if any was a press
+        while dev.has_response():
+            r = dev.get_next_response()
+            if bool(r.get("pressed", False)):  # <-- default False
+                pressed_seen = True
+
+        if hasattr(dev, "clear_response_queue"):
+            dev.clear_response_queue()
+        return pressed_seen
     except Exception as e:
         print(f"[Cedrus] poll failed: {e}")
         return False
-        
+
 # -------- Helper functions --------
 
 noise_grain = 3  # pixel x pixel
@@ -200,7 +226,62 @@ def run_dynamic_trials(win, el_tracker, screen_width, screen_height, participant
             cedrus.clear_response_queue()
     else:
         event.waitKeys(keyList=['return', 'enter'])
+    _cedrus_flush(cedrus)
     event.clearEvents(eventType='keyboard')
+    
+    def measure_fixation_drift(trial_idx, duration=0.5):
+        """
+        Show a fixation cross for `duration` sec while recording from EyeLink,
+        return median angular error (deg) from center. Empty string if unavailable.
+        """
+        # Make a local cross so we don’t rely on an outer variable
+        cross = visual.TextStim(win, text='+', color='black', height=40, units='pix')
+    
+        # If no tracker, just display the cross and wait
+        if not el_tracker:
+            cross.draw(); win.flip(); core.wait(duration)
+            return ""
+    
+        # Start a short recording just for the fixation check
+        try:
+            el_tracker.setOfflineMode()
+            el_tracker.sendMessage(f'FIXCHECK_START {trial_idx}')
+            el_tracker.startRecording(1, 1, 1, 1)
+            core.wait(0.1)  # let it settle
+        except Exception:
+            # Fallback: still show fixation and wait, but no drift value
+            cross.draw(); win.flip(); core.wait(duration)
+            return ""
+    
+        # Collect samples while showing the cross
+        samples = []
+        clk_fix = core.Clock()
+        while clk_fix.getTime() < duration:
+            cross.draw()
+            win.flip()
+    
+            s = el_tracker.getNewestSample()
+            eye = s.getRightEye() if (s and s.isRightSample()) else (s.getLeftEye() if (s and s.isLeftSample()) else None)
+            if eye is not None:
+                rx, ry = eye.getGaze()  # screen px (0,0)=TL, +y down
+                if (rx is not None and ry is not None and rx > -1e5 and ry > -1e5):
+                    # center (+y up)
+                    gx = float(rx) - (screen_width / 2.0)
+                    gy = (screen_height / 2.0) - float(ry)
+                    # convert to degrees: px / (px/deg)
+                    dist_deg = np.hypot(gx, gy) / float(cell_size)
+                    samples.append(dist_deg)
+            core.wait(0.005)
+    
+        try:
+            el_tracker.sendMessage('FIXCHECK_END')
+            el_tracker.stopRecording()
+        except Exception:
+            pass
+    
+        return round(float(np.median(samples)), 3) if samples else ""
+    
+
 
     # Open CSV
     with open(filename, mode='w', newline='') as file:
@@ -208,7 +289,7 @@ def run_dynamic_trials(win, el_tracker, screen_width, screen_height, participant
         writer.writerow([
             "Task Type", "Participant ID", "Trial", "Target Present", "Response", "Correct",
             "Reaction Time (s)", "Num Gabors", "Gabor Positions", "Target Trajectory",
-            "Speed (px/s)", "FixOnTargetTime(s)", "LastFixIndex"
+            "Speed (px/s)", "FixOnTargetTime(s)", "LastFixIndex", 'CalibrationDrift(deg)'
         ])
 
         # Progress text
@@ -219,12 +300,13 @@ def run_dynamic_trials(win, el_tracker, screen_width, screen_height, participant
 
         # -------- Trials --------
         for trial in range(num_trials):
-            # 500 ms fixation
-            fix_cross = visual.TextStim(win, text='+', color='black', height=40, units='pix')
-            fix_cross.draw(); win.flip(); core.wait(0.5)
+            # 500 ms fixation + drift measurement (also draws the cross)
+            drift_deg = measure_fixation_drift(trial + 1, duration=0.5)
+
+            if cedrus:
+                _cedrus_flush(cedrus)
             event.clearEvents(eventType='keyboard')
-            if cedrus and hasattr(cedrus, "clear_response_queue"):
-                cedrus.clear_response_queue()
+
 
             num_gabors = 10
             target_present = True
@@ -434,12 +516,17 @@ def run_dynamic_trials(win, el_tracker, screen_width, screen_height, participant
             progress_text.text = f"{trial + 1}/{num_trials}"
             feedback.draw(); progress_text.draw()
             win.flip(); core.wait(feedback_duration)
+            
+            event.clearEvents(eventType='keyboard')
+            if cedrus:
+                _cedrus_flush(cedrus)
 
-            response_num = 1 if response == "space" else -1
+
+            response_num = 1 if response == "space" else 0
             writer.writerow([
                 "dynamic task", participant_id, trial + 1, int(target_present),
                 response_num, int(is_correct), rt,
                 num_gabors, gabor_trajectory, target_trajectory, round(speed_px_per_sec, 2),
                 round(last_fix_on_target_time, 4) if last_fix_on_target_time is not None else "",
-                last_committed_fix_idx if last_committed_fix_idx is not None else ""
+                last_committed_fix_idx if last_committed_fix_idx is not None else "", drift_deg
             ])
