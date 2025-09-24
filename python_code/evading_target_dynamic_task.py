@@ -12,7 +12,7 @@ Created on Wed Sep 3 12:15:16 2025
     
       - On target-present trials, the target appears at n s by taking over a distractor (appear_delay).
       - On that frame, all other distractors re-randomize (masked reveal).
-      - Fixations are tracked continuously, but n-back retargeting only activates after the target appears (>= n s).       
+      - Fixations are tracked continuously, but n-back retargeting only activates after the target appears (>= n s).     
 """
 
 import os
@@ -50,8 +50,26 @@ def _cedrus_open():
         print(f"[Cedrus] init failed: {e}")
         return None
 
+def _cedrus_flush(dev, dur=0.12):
+    """Drain any pending Cedrus events for ~dur seconds."""
+    if not dev:
+        return
+    try:
+        t0 = core.getTime()
+        while (core.getTime() - t0) < dur:
+            if hasattr(dev, "poll_for_response"):
+                dev.poll_for_response()
+            while dev.has_response():
+                dev.get_next_response()  # pop everything
+            core.wait(0.005)
+        if hasattr(dev, "clear_response_queue"):
+            dev.clear_response_queue()
+    except Exception as e:
+        print(f"[Cedrus] flush failed: {e}")
+
+
 def _cedrus_any_pressed(dev) -> bool:
-    """True if *any* Cedrus key press event is available (drains one)."""
+    """True if *any* Cedrus key press event is available (drains one batch)."""
     if not dev:
         return False
     try:
@@ -59,14 +77,21 @@ def _cedrus_any_pressed(dev) -> bool:
             dev.poll_for_response()
         if not dev.has_response():
             return False
-        r = dev.get_next_response()
-        pressed = bool(r.get("pressed", True))
+
+        pressed_seen = False
+        # Drain everything queued this instant and see if any was a press
+        while dev.has_response():
+            r = dev.get_next_response()
+            if bool(r.get("pressed", False)):  # <-- default False
+                pressed_seen = True
+
         if hasattr(dev, "clear_response_queue"):
             dev.clear_response_queue()
-        return pressed
+        return pressed_seen
     except Exception as e:
         print(f"[Cedrus] poll failed: {e}")
         return False
+
 
 # -------- Helper functions --------
 
@@ -261,7 +286,57 @@ def run_evading_target_dynamic_trials(win, el_tracker, screen_width, screen_heig
             cedrus.clear_response_queue()
     else:
         event.waitKeys(keyList=['return', 'enter'])
+    _cedrus_flush(cedrus)
     event.clearEvents(eventType='keyboard')  # keep buffer clean
+    
+    def measure_fixation_drift(trial_idx, duration=0.5):
+        """
+        Show a fixation cross for `duration` sec while recording from EyeLink,
+        return median angular error (deg) from center. Empty string if unavailable.
+        """
+        cross = visual.TextStim(win, text='+', color='black', height=40, units='pix')
+    
+        # No tracker: just show the cross for the same duration
+        if not el_tracker:
+            cross.draw(); win.flip(); core.wait(duration)
+            return ""
+    
+        # Short recording for the fix-check
+        try:
+            el_tracker.setOfflineMode()
+            el_tracker.sendMessage(f'FIXCHECK_START {trial_idx}')
+            el_tracker.startRecording(1, 1, 1, 1)
+            core.wait(0.1)  # settle
+        except Exception:
+            cross.draw(); win.flip(); core.wait(duration)
+            return ""
+    
+        samples = []
+        clk_fix = core.Clock()
+        while clk_fix.getTime() < duration:
+            cross.draw()
+            win.flip()
+    
+            s = el_tracker.getNewestSample()
+            eye = s.getRightEye() if (s and s.isRightSample()) else (s.getLeftEye() if (s and s.isLeftSample()) else None)
+            if eye is not None:
+                rx, ry = eye.getGaze()  # screen px (0,0)=TL, +y down
+                if (rx is not None and ry is not None and rx > -1e5 and ry > -1e5):
+                    # convert to centered pixels (+y up), then to deg using cell_size (px/deg)
+                    gx = float(rx) - (screen_width / 2.0)
+                    gy = (screen_height / 2.0) - float(ry)
+                    dist_deg = np.hypot(gx, gy) / float(cell_size)
+                    samples.append(dist_deg)
+            core.wait(0.005)
+    
+        try:
+            el_tracker.sendMessage('FIXCHECK_END')
+            el_tracker.stopRecording()
+        except Exception:
+            pass
+    
+        return round(float(np.median(samples)), 3) if samples else ""
+
 
     # Open a CSV file for behavioural results
     with open(filename, mode='w', newline='') as file:
@@ -270,7 +345,7 @@ def run_evading_target_dynamic_trials(win, el_tracker, screen_width, screen_heig
         writer.writerow(["Task Type", "Participant ID", "Trial", "Target Present", "Response", "Correct",
                          "Reaction Time (s)", "Num Gabors", "Gabor Positions", "Target Trajectory", "Speed (px/s)",
                          "NBackK", "NBackUsedSeq", "Fixations",
-                         "FixOnTargetTime(s)", "LastFixIndex"]) 
+                         "FixOnTargetTime(s)", "LastFixIndex", 'CalibrationDrift(deg)' ]) 
         
         # --- Progress text shown during feedback ---
         progress_text = visual.TextStim(
@@ -318,14 +393,16 @@ def run_evading_target_dynamic_trials(win, el_tracker, screen_width, screen_heig
                 g.sf  = random.choice(spatial_frequencies)
 
         for trial in range(num_trials):
-            # 500 ms fixation cross
-            fix_cross = visual.TextStim(win, text='+', color='black', height=40)
-            fix_cross.draw()
-            win.flip()
-            core.wait(0.5)
+            # 500 ms fixation + drift measurement (also draws the cross)
+            drift_deg = measure_fixation_drift(trial + 1, duration=0.5)
+            
+            # clean input buffers after the fix-check
+            if cedrus:
+                _cedrus_flush(cedrus)
             event.clearEvents(eventType='keyboard')
             if cedrus and hasattr(cedrus, "clear_response_queue"):
                 cedrus.clear_response_queue()
+
 
             # Number of Gabors defined here
             num_gabors = random.choice([10])
@@ -636,6 +713,8 @@ def run_evading_target_dynamic_trials(win, el_tracker, screen_width, screen_heig
             progress_text.draw()
             win.flip()
             core.wait(feedback_duration)
+            if cedrus:
+                _cedrus_flush(cedrus)
             event.clearEvents(eventType='keyboard')
 
             response_num = 1 if response == "space" else 0         
@@ -647,5 +726,5 @@ def run_evading_target_dynamic_trials(win, el_tracker, screen_width, screen_heig
                 nback_used_seq,             # NBackUsedSeq (will stay [] for 'RND')
                 fix_log,
                 round(last_fix_on_target_time, 4) if last_fix_on_target_time is not None else "",
-                last_committed_fix_idx if last_committed_fix_idx is not None else ""
+                last_committed_fix_idx if last_committed_fix_idx is not None else "", drift_deg
             ])
