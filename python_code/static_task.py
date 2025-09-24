@@ -5,13 +5,12 @@ Created on Wed May 28 12:40:52 2025
 
 @author: herttaleinonen
 
-static_task.py
-Keyboard + optional Cedrus (any button) support:
- - Any Cedrus button starts from the instruction screen
- - Any Cedrus button counts as SPACE during trials
- - Keyboard fallback: ENTER to start, SPACE to respond, ESC to abort
+    Static Gabor detection task:
+      - Target present every trial.
+      - Placement rule k∈{0..4} with quotas and anti-streak.
+      - Response: SPACE (keyboard) or any Cedrus button.
+      - Correctness: lenient gaze-on-target recently or at keypress.
 """
-
 import os
 import csv
 import random
@@ -26,6 +25,7 @@ from config import (
     target_sf, movement_delay
 )
 # --------- Cedrus–response box setup (safe if pyxid2 missing) ---------
+
 try:
     import pyxid2
 except Exception:
@@ -48,21 +48,44 @@ def _cedrus_open():
         print(f"[Cedrus] init failed: {e}")
         return None
 
+def _cedrus_flush(dev, dur=0.12):
+    """Drain any pending Cedrus events for ~dur seconds."""
+    if not dev:
+        return
+    try:
+        t0 = core.getTime()
+        while (core.getTime() - t0) < dur:
+            if hasattr(dev, "poll_for_response"):
+                dev.poll_for_response()
+            while dev.has_response():
+                dev.get_next_response()  # pop everything
+            core.wait(0.005)
+        if hasattr(dev, "clear_response_queue"):
+            dev.clear_response_queue()
+    except Exception as e:
+        print(f"[Cedrus] flush failed: {e}")
+
+
 def _cedrus_any_pressed(dev) -> bool:
-    """True if *any* Cedrus key press event is available (drains queue)."""
+    """True if *any* Cedrus key press event is available (drains one batch)."""
     if not dev:
         return False
     try:
         if hasattr(dev, "poll_for_response"):
             dev.poll_for_response()
-        has_resp = getattr(dev, "has_response", lambda: False)()
-        if not has_resp:
+        if not dev.has_response():
             return False
-        r = dev.get_next_response()
+
+        pressed_seen = False
+        # Drain everything queued this instant and see if any was a press
+        while dev.has_response():
+            r = dev.get_next_response()
+            if bool(r.get("pressed", False)):  # <-- default False
+                pressed_seen = True
+
         if hasattr(dev, "clear_response_queue"):
             dev.clear_response_queue()
-        # treat any response as a press; many firmwares set r["pressed"]=True
-        return bool(r.get("pressed", True))
+        return pressed_seen
     except Exception as e:
         print(f"[Cedrus] poll failed: {e}")
         return False
@@ -73,13 +96,6 @@ def run_static_trials(win, el_tracker,
                       screen_width, screen_height,
                       participant_id, timestamp,
                       noise_grain=3):
-    """
-    Static Gabor detection task:
-      - Target present every trial.
-      - Placement rule k∈{0..4} with quotas and anti-streak.
-      - Response: SPACE (keyboard) or any Cedrus button.
-      - Correctness: lenient gaze-on-target recently or at keypress.
-    """
 
     sw, sh = screen_width, screen_height
     output_dir = 'results'
@@ -186,7 +202,71 @@ def run_static_trials(win, el_tracker,
             cedrus.clear_response_queue()
     else:
         event.waitKeys(keyList=['return','enter'])
+        
+    _cedrus_flush(cedrus)
     event.clearEvents(eventType='keyboard')
+    
+    # --- helper: measure calibration drift during the fixation cross ---
+    def measure_fixation_drift(trial_idx, duration=0.5):
+        """
+        Show the fixation cross for `duration` sec while recording from EyeLink,
+        return median angular error (deg) from the cross (center).
+        If no tracker/samples, return "" (empty cell).
+        """
+        # If no tracker, just display the cross and wait
+        if not el_tracker:
+            fix_cross.draw(); win.flip(); core.wait(duration)
+            return ""
+    
+        # Start a short recording just for the fixation check
+        try:
+            el_tracker.setOfflineMode()
+            el_tracker.sendMessage(f'FIXCHECK_START {trial_idx}')
+            el_tracker.startRecording(1, 1, 1, 1)
+            core.wait(0.1)  # let it settle
+        except Exception:
+            # Fallback: still show fixation and wait, but no drift value
+            fix_cross.draw(); win.flip(); core.wait(duration)
+            return ""
+    
+        # Collect samples while showing the cross
+        samples = []
+        clk_fix = core.Clock()
+        while clk_fix.getTime() < duration:
+            fix_cross.draw()
+            win.flip()
+    
+            s = el_tracker.getNewestSample()
+            eye = None
+            if s and s.isRightSample():
+                eye = s.getRightEye()
+            elif s and s.isLeftSample():
+                eye = s.getLeftEye()
+    
+            if eye is not None:
+                rx, ry = eye.getGaze()  # screen px, origin top-left, +y down
+                if (rx is not None and ry is not None and rx > -1e5 and ry > -1e5):
+                    # convert to PsychoPy-centered px (+y up)
+                    gx = float(rx) - (sw / 2.0)
+                    gy = (sh / 2.0) - float(ry)
+                    # store distance in deg (cell_size ≈ px/deg)
+                    dist_deg = math.hypot(gx, gy) / float(cell_size)
+                    samples.append(dist_deg)
+    
+            core.wait(0.005)
+    
+        # Stop this short recording
+        try:
+            el_tracker.sendMessage('FIXCHECK_END')
+            el_tracker.stopRecording()
+        except Exception:
+            pass
+    
+        # Robust summary
+        if not samples:
+            return ""
+        return round(float(np.median(samples)), 3)
+
 
     # ------- helper: Gaussian noise image -------
     def generate_noise(w, h, grain=noise_grain):
@@ -222,7 +302,7 @@ def run_static_trials(win, el_tracker,
             'Task Type','Participant ID',
             'Trial','TargetPresent','Response','Correct','RT',
             'NumGabors','GaborPos','TargetPos','PlacementRule',
-            'FixOnTargetTime(s)','LastFixIndex'
+            'FixOnTargetTime(s)','LastFixIndex','CalibrationDrift(deg)'
         ])
 
         progress_text = visual.TextStim(
@@ -232,11 +312,13 @@ def run_static_trials(win, el_tracker,
 
         # >>>>>>>>>>>>>>> trial loop <<<<<<<<<<<<<<<
         for t in range(num_trials):
-            # fixation blink
-            fix_cross.draw(); win.flip(); core.wait(0.5)
+            # fixation + drift measurement (also draws the cross)
+            drift_deg = measure_fixation_drift(t+1, duration=0.5)
+            
+            if cedrus:
+                _cedrus_flush(cedrus)
             event.clearEvents(eventType='keyboard')
-            if cedrus and hasattr(cedrus, "clear_response_queue"):
-                cedrus.clear_response_queue()
+
 
             tp = True
             n = 10  # fixed array size
@@ -425,7 +507,7 @@ def run_static_trials(win, el_tracker,
             # feedback & correctness
             if response is None:
                 fb_text = timeout_feedback_text
-                resp_str = 'None'; rt_str = ''
+                resp_str = 0; rt_str = ''
                 corr = 0
             else:
                 recently_fixated_target = (last_fix_on_target_time is not None) and \
@@ -444,13 +526,16 @@ def run_static_trials(win, el_tracker,
 
                 is_correct = recently_fixated_target or on_keypress_fixated_target
                 fb_text = 'Correct' if is_correct else 'Incorrect'
-                resp_str = 'space'; rt_str = rt
+                resp_str = 1; rt_str = rt
                 corr = int(is_correct)
 
             fb = visual.TextStim(win, text=fb_text, color='white', height=40, units='pix')
             progress_text.text = f"{t+1}/{num_trials}"
             fb.draw(); progress_text.draw()
             win.flip(); core.wait(feedback_duration)
+            
+            if cedrus:
+                _cedrus_flush(cedrus)
             event.clearEvents(eventType='keyboard')
 
             target_grid = pos[tgt_idx]
@@ -465,7 +550,7 @@ def run_static_trials(win, el_tracker,
                 resp_str, corr, rt_str,
                 n, pos, target_grid, rule_k,
                 round(last_fix_on_target_time, 4) if last_fix_on_target_time is not None else "",
-                last_committed_fix_idx if last_committed_fix_idx is not None else ""
+                last_committed_fix_idx if last_committed_fix_idx is not None else "", drift_deg
             ])
         # <<<<<<<<<<<<< end trial loop <<<<<<<<<<<<<<<
 
