@@ -1,18 +1,15 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-
 """
 Created on Wed May 28 12:40:52 2025
 
 @author: herttaleinonen
 
 static_task.py
-
-Provides run_static_trials() for calling from main.py after EyeLink setup.
-Displays stationary Gabor arrays on a static Gaussian noise background,
-flashes a fixation cross between trials for 0.5s,
-collects responses during the trial duration window,
-provides feedback between trials, incorrect/correct based on gaze coordinates
+Keyboard + optional Cedrus (any button) support:
+ - Any Cedrus button starts from the instruction screen
+ - Any Cedrus button counts as SPACE during trials
+ - Keyboard fallback: ENTER to start, SPACE to respond, ESC to abort
 """
 
 import os
@@ -28,16 +25,59 @@ from config import (
     orientations, spatial_frequencies, target_orientation,
     target_sf, movement_delay
 )
+# --------- Cedrus–response box setup (safe if pyxid2 missing) ---------
+try:
+    import pyxid2
+except Exception:
+    pyxid2 = None
+
+def _cedrus_open():
+    """Return first Cedrus device or None. Never raises."""
+    if pyxid2 is None:
+        return None
+    try:
+        devs = pyxid2.get_xid_devices()
+        if not devs:
+            return None
+        dev = devs[0]
+        if hasattr(dev, "reset_base_timer"): dev.reset_base_timer()
+        if hasattr(dev, "reset_rt_timer"):   dev.reset_rt_timer()
+        if hasattr(dev, "clear_response_queue"): dev.clear_response_queue()
+        return dev
+    except Exception as e:
+        print(f"[Cedrus] init failed: {e}")
+        return None
+
+def _cedrus_any_pressed(dev) -> bool:
+    """True if *any* Cedrus key press event is available (drains queue)."""
+    if not dev:
+        return False
+    try:
+        if hasattr(dev, "poll_for_response"):
+            dev.poll_for_response()
+        has_resp = getattr(dev, "has_response", lambda: False)()
+        if not has_resp:
+            return False
+        r = dev.get_next_response()
+        if hasattr(dev, "clear_response_queue"):
+            dev.clear_response_queue()
+        # treat any response as a press; many firmwares set r["pressed"]=True
+        return bool(r.get("pressed", True))
+    except Exception as e:
+        print(f"[Cedrus] poll failed: {e}")
+        return False
+
+# --------------------------------------------------------------------
 
 def run_static_trials(win, el_tracker,
                       screen_width, screen_height,
                       participant_id, timestamp,
                       noise_grain=3):
     """
-    Static Gabor detection task (keyboard only):
+    Static Gabor detection task:
       - Target present every trial.
       - Placement rule k∈{0..4} with quotas and anti-streak.
-      - Participant presses SPACE when they see the target.
+      - Response: SPACE (keyboard) or any Cedrus button.
       - Correctness: lenient gaze-on-target recently or at keypress.
     """
 
@@ -64,6 +104,13 @@ def run_static_trials(win, el_tracker,
         # PsychoPy 'gauss' mask: σ ≈ size/6
         sigma = cell_size / 6.0
         return max(capture_radius_px, gauss_k * sigma)
+
+    # ----- Cedrus open (optional) -----
+    cedrus = _cedrus_open()
+    if cedrus:
+        print("[Cedrus] Connected. Any button will start/respond.")
+    else:
+        print("[Cedrus] Not found (or pyxid2 missing). Keyboard only.")
 
     # fixation cross
     fix_cross = visual.TextStim(win, text='+', color='black', height=40, units='pix')
@@ -118,11 +165,27 @@ def run_static_trials(win, el_tracker,
     lab_t = visual.TextStim(win, text="Target (45°)", color='white', height=22,
                             pos=(tgt_x, tgt_y - int(0.12 * sh)), units='pix')
 
+    # Draw instructions + examples
     inst.draw()
     for s in example_stims: s.draw()
     lab_d.draw(); lab_t.draw()
     win.flip()
-    event.waitKeys(keyList=['return', 'enter'])
+
+    # Start gate: Cedrus (any button) OR keyboard (Enter)
+    if cedrus:
+        while True:
+            if _cedrus_any_pressed(cedrus):
+                break
+            keys = event.getKeys(keyList=['return','enter','escape'])
+            if 'escape' in keys:
+                return filename
+            if keys:
+                break
+            core.wait(0.01)
+        if hasattr(cedrus, "clear_response_queue"):
+            cedrus.clear_response_queue()
+    else:
+        event.waitKeys(keyList=['return','enter'])
     event.clearEvents(eventType='keyboard')
 
     # ------- helper: Gaussian noise image -------
@@ -132,8 +195,8 @@ def run_static_trials(win, el_tracker,
         noise = np.repeat(np.repeat(small, grain, axis=0), grain, axis=1)
         return noise[:h, :w]
 
-    # quotas for rules
-    weights = (0.60, 0.10, 0.10, 0.10, 0.10)
+    # quotas for rules (target placement)
+    weights = (0.60, 0.10, 0.10, 0.10, 0.10) # weighted to avoid infinite repeats
     labels  = [0, 1, 2, 3, 4]
     raw     = [num_trials * w for w in weights]
     counts  = [int(math.floor(x)) for x in raw]
@@ -172,9 +235,11 @@ def run_static_trials(win, el_tracker,
             # fixation blink
             fix_cross.draw(); win.flip(); core.wait(0.5)
             event.clearEvents(eventType='keyboard')
+            if cedrus and hasattr(cedrus, "clear_response_queue"):
+                cedrus.clear_response_queue()
 
             tp = True
-            n = 10  # fixed array size used previously
+            n = 10  # fixed array size
 
             # --- choose rule_k with quotas + anti-streak ---
             in_block_warmup = (block_size and (t % block_size) < block_warmup)
@@ -227,7 +292,6 @@ def run_static_trials(win, el_tracker,
                     if (x, y) not in seen:
                         pos.append((x, y)); seen.add((x, y))
                 last = target_history[-1] if len(target_history) >= 1 else None
-                # choose any pos not equal to last target location
                 allowed = [p for p in pos if (last is None or p != last)] or pos
                 target_grid = random.choice(allowed)
                 tgt_idx = pos.index(target_grid)
@@ -285,7 +349,13 @@ def run_static_trials(win, el_tracker,
                 for g in gabors: g.draw()
                 win.flip()
 
-                # keyboard only: SPACE or ESC
+                # Cedrus first: ANY button = SPACE
+                if cedrus and _cedrus_any_pressed(cedrus):
+                    response = 'space'
+                    rt = clk.getTime()
+                    break
+
+                # keyboard: SPACE / ESC
                 keys = event.getKeys(keyList=['space','escape'], timeStamped=clk)
                 if keys:
                     k, t0 = keys[0]
@@ -400,5 +470,3 @@ def run_static_trials(win, el_tracker,
         # <<<<<<<<<<<<< end trial loop <<<<<<<<<<<<<<<
 
     return filename
-
-
