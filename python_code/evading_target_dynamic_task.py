@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
-#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Created on Wed Sep  3 12:15:16 2025
+Created on Wed Sep 3 12:15:16 2025
 
 @author: herttaleinonen
 
@@ -13,23 +12,61 @@ Created on Wed Sep  3 12:15:16 2025
     
       - On target-present trials, the target appears at n s by taking over a distractor (appear_delay).
       - On that frame, all other distractors re-randomize (masked reveal).
-      - Fixations are tracked continuously, but n-back retargeting only activates after the target appears (>= n s).
-         
+      - Fixations are tracked continuously, but n-back retargeting only activates after the target appears (>= n s).       
 """
 
 import os
 import csv
 import random
-#import math
 import numpy as np
 from psychopy import visual, core, event
+
 from config import (
     grid_size_x, grid_size_y, cell_size, DIAGONAL_SCALE,
     num_trials, trial_duration, feedback_duration, timeout_feedback_text,
     orientations, spatial_frequencies, target_orientation,
     target_sf, transition_steps, movement_delay
 )
+# --------- Cedrus–response box setup (safe if pyxid2 missing) ---------
+try:
+    import pyxid2
+except Exception:
+    pyxid2 = None
 
+def _cedrus_open():
+    """Return first Cedrus device or None. Never raises."""
+    if pyxid2 is None:
+        return None
+    try:
+        devs = pyxid2.get_xid_devices()
+        if not devs:
+            return None
+        dev = devs[0]
+        if hasattr(dev, "reset_base_timer"): dev.reset_base_timer()
+        if hasattr(dev, "reset_rt_timer"):   dev.reset_rt_timer()
+        if hasattr(dev, "clear_response_queue"): dev.clear_response_queue()
+        return dev
+    except Exception as e:
+        print(f"[Cedrus] init failed: {e}")
+        return None
+
+def _cedrus_any_pressed(dev) -> bool:
+    """True if *any* Cedrus key press event is available (drains one)."""
+    if not dev:
+        return False
+    try:
+        if hasattr(dev, "poll_for_response"):
+            dev.poll_for_response()
+        if not dev.has_response():
+            return False
+        r = dev.get_next_response()
+        pressed = bool(r.get("pressed", True))
+        if hasattr(dev, "clear_response_queue"):
+            dev.clear_response_queue()
+        return pressed
+    except Exception as e:
+        print(f"[Cedrus] poll failed: {e}")
+        return False
 
 # -------- Helper functions --------
 
@@ -113,7 +150,6 @@ def run_evading_target_dynamic_trials(win, el_tracker, screen_width, screen_heig
         sigma = cell_size / 6.0  # 'gauss' mask σ
         return max(2.0 * capture_radius_px, 8.0 * sigma)  # bigger circle than before
 
-
     
     # Pre-compute a bank of 30 noise frames
     noise_bank = [generate_noise(screen_width, screen_height, grain_size=3)
@@ -135,18 +171,96 @@ def run_evading_target_dynamic_trials(win, el_tracker, screen_width, screen_heig
     # For CSV: keep a simple nominal speed (same as your earlier formula)
     speed_px_per_sec = (4 * cell_size) / (transition_steps * movement_delay)
     
-    # Initialize instructions screen
-    instruction_text = visual.TextStim(win,
+    # ----- Cedrus open (optional) -----
+    cedrus = _cedrus_open()
+    if cedrus:
+        print("[Cedrus] Connected. Any button will start/respond.")
+    else:
+        print("[Cedrus] Not found (or pyxid2 missing). Keyboard only.")
+    
+    # --- Instruction screen with example stimuli (text + icons) ---
+    instruction_text = visual.TextStim(
+        win,
         text=("In the following task, you will see objects, and among them you have to find a target object.\n"
               "The target object is tilted 45°.\n"
-              "Press SPACE as soon as you see the target.\n"  
-              "Each trial you have 5 seconds to decide, try to make the decision as fast as possible.\n"
+              "Press 'SPACE' as soon as you see the target.\n"
+              "Each trial you have 7 seconds to respond.\n"
+              "Between trials there is a cross in the middle of the screen, try to focus your eyes there.\n"
               "Press Enter to start."),
         color='white', height=30, wrapWidth=screen_width * 0.8, units='pix'
     )
-    instruction_text.draw(); 
-    win.flip(); 
-    event.waitKeys(keyList=['return'])
+    
+    # Layout params (row for distractors; target pushed further right)
+    row_y  = -int(screen_height * 0.22)   # y-position for the icons row
+    gap    = int(cell_size * 0.6)         # spacing between distractors
+    extra  = int(cell_size * 5.0)         # extra separation before target
+    tgt_dy = -int(0.00 * screen_height)   # small vertical nudge for target (set 0 for same row)
+    
+    ori_list = list(orientations)         # distractor orientations from config
+    n_d = len(ori_list)
+    
+    # width of the distractor row (without the target)
+    row_w_d = n_d * cell_size + (n_d - 1) * gap
+    start_x = -row_w_d // 2 + cell_size // 2
+    
+    example_stims = []
+    rng = np.random.default_rng(0)        # deterministic SF pick for a stable instruction screen
+    
+    # Distractors row
+    for i, ori in enumerate(ori_list):
+        sf = rng.choice(spatial_frequencies)
+        g = visual.GratingStim(
+            win, tex='sin', mask='gauss', size=cell_size,
+            sf=sf, ori=ori, phase=0.25, units='pix'
+        )
+        x = start_x + i * (cell_size + gap)
+        g.pos = (x, row_y)
+        example_stims.append(g)
+    
+    # Target (45°), placed to the right with extra separation (and slight vertical offset)
+    tgt_x = start_x + (n_d - 1) * (cell_size + gap) + cell_size // 2 + extra
+    tgt_y = row_y + tgt_dy
+    tgt = visual.GratingStim(
+        win, tex='sin', mask='gauss', size=cell_size,
+        sf=target_sf, ori=target_orientation, phase=0.25, units='pix'
+    )
+    tgt.pos = (tgt_x, tgt_y)
+    example_stims.append(tgt)
+    
+    # Labels
+    lab_d = visual.TextStim(
+        win, text="Distractors", color='white', height=22, units='pix',
+        pos=((start_x + (start_x + (n_d - 1) * (cell_size + gap))) / 2.0,
+             row_y - int(0.12 * screen_height))
+    )
+    lab_t = visual.TextStim(
+        win, text="Target (45°)", color='white', height=22, units='pix',
+        pos=(tgt_x, tgt_y - int(0.12 * screen_height))
+    )
+    
+    # Draw everything in one frame
+    instruction_text.draw()
+    for s in example_stims:
+        s.draw()
+    lab_d.draw()
+    lab_t.draw()
+    win.flip()
+
+    # ---- Start gate: Cedrus (any button) OR keyboard (Enter), ESC abort ----
+    if cedrus:
+        while True:
+            if _cedrus_any_pressed(cedrus):
+                break
+            keys = event.getKeys(keyList=['return', 'enter', 'escape'])
+            if 'escape' in keys:
+                return filename
+            if keys:
+                break
+            core.wait(0.01)
+        if hasattr(cedrus, "clear_response_queue"):
+            cedrus.clear_response_queue()
+    else:
+        event.waitKeys(keyList=['return', 'enter'])
     event.clearEvents(eventType='keyboard')  # keep buffer clean
 
     # Open a CSV file for behavioural results
@@ -156,10 +270,18 @@ def run_evading_target_dynamic_trials(win, el_tracker, screen_width, screen_heig
         writer.writerow(["Task Type", "Participant ID", "Trial", "Target Present", "Response", "Correct",
                          "Reaction Time (s)", "Num Gabors", "Gabor Positions", "Target Trajectory", "Speed (px/s)",
                          "NBackK", "NBackUsedSeq", "Fixations",
-                         "FixOnTargetTime(s)", "LastFixIndex"])  
+                         "FixOnTargetTime(s)", "LastFixIndex"]) 
+        
+        # --- Progress text shown during feedback ---
+        progress_text = visual.TextStim(
+            win,
+            text="",
+            color='white',
+            height=28,
+            pos=(0, -int(screen_height * 0.18)),  # a bit below the center; tweak if needed
+            units='pix'
+        )
 
-
-    
         # ---- Balanced per-trial "mode": 1-back, 2-back, 4-back, or RANDOM target (¼ each) ----
         present_ratio   = 1.0
         num_present_raw = int(round(num_trials * present_ratio))    # here: == num_trials
@@ -187,15 +309,11 @@ def run_evading_target_dynamic_trials(win, el_tracker, screen_width, screen_heig
         mode_seq = make_balanced_mode_sequence(num_present_raw)
         mode_idx = 0  # cursor through mode_seq
 
-        
-        # -------------------------------------------------------------------------
-
         # helper to mask a reveal/jump by re-randomizing all distractors
         def refresh_all_distractors(gabors, exclude_idx=None):
             for j, g in enumerate(gabors):
                 if exclude_idx is not None and j == exclude_idx:
                     continue
-                # (keep same object, just re-randomize features)
                 g.ori = random.choice(orientations)
                 g.sf  = random.choice(spatial_frequencies)
 
@@ -206,6 +324,8 @@ def run_evading_target_dynamic_trials(win, el_tracker, screen_width, screen_heig
             win.flip()
             core.wait(0.5)
             event.clearEvents(eventType='keyboard')
+            if cedrus and hasattr(cedrus, "clear_response_queue"):
+                cedrus.clear_response_queue()
 
             # Number of Gabors defined here
             num_gabors = random.choice([10])
@@ -256,8 +376,8 @@ def run_evading_target_dynamic_trials(win, el_tracker, screen_width, screen_heig
             # --- Gaze-driven state (like static) ---
             inspected_indices = []   # distractor indices visited (debounced)
             inspected_times   = []   # timestamps for those visits (trial_clock time)
-            nback_used_seq    = []   # NEW: log which k actually fired
-            cluster_cx, cluster_cy = prev_gx, prev_gy
+            nback_used_seq    = []   # log which k actually fired
+            cluster_cx, cluster_cy = screen_width/2.0, screen_height/2.0
             cluster_len = 0
             committed_this_cluster = False
 
@@ -286,8 +406,9 @@ def run_evading_target_dynamic_trials(win, el_tracker, screen_width, screen_heig
             score_gx_c, score_gy_c  = 0.0, 0.0  # last centered gaze for scoring
             score_prev_target_pos_c = None   # previous target position (centered) after a jump
             score_target_change_time = -1e9  # time of last target jump
-            score_change_grace       = 0.8   # s: allow press near the *previous* target shortly after a jump
-            
+            score_change_grace       = 0.8   # s
+
+
             while trial_clock.getTime() < trial_duration:
                 now_t = trial_clock.getTime()
 
@@ -296,7 +417,6 @@ def run_evading_target_dynamic_trials(win, el_tracker, screen_width, screen_heig
                     target_index = random.randrange(num_gabors)
                     gabors[target_index].ori = target_orientation
                     gabors[target_index].sf  = target_sf
-                    # optional: mask reveal by refreshing all distractors' features
                     refresh_all_distractors(gabors, exclude_idx=target_index)
                     armed = True
 
@@ -361,20 +481,17 @@ def run_evading_target_dynamic_trials(win, el_tracker, screen_width, screen_heig
                         else:
                             score_inside_count = 0
 
-                
-                    # fixation clustering
+                    # fixation clustering (in screen coords for cluster center)
                     dx = prev_gx - cluster_cx
                     dy = prev_gy - cluster_cy
                     inside = (dx*dx + dy*dy) <= (fix_radius_px*fix_radius_px)
                 
                     if inside:
-                        # still within this fixation
                         cluster_len += 1
                         w = 1.0 / max(1, cluster_len)
                         cluster_cx = (1 - w)*cluster_cx + w*prev_gx
                         cluster_cy = (1 - w)*cluster_cy + w*prev_gy
                 
-                        # commit ONCE when we first hit min_fix_frames
                         if (not committed_this_cluster) and (cluster_len == min_fix_frames):
                             # map fixation to nearest Gabor center (in pixels), with capture radius
                             centers_pix = np.array([g.pos for g in gabors], dtype=float)
@@ -403,12 +520,11 @@ def run_evading_target_dynamic_trials(win, el_tracker, screen_width, screen_heig
                             committed_this_cluster = True
                 
                     else:
-                        # just LEFT the fixation cluster → act now if the fixation was long enough
                         if cluster_len >= min_fix_frames:
-                            # 1) n-back retargeting (only after reveal) — SKIP if mode is 'RND'
+                            # n-back retargeting (only after reveal) — skip if mode is 'RND'
                             if armed and (trial_mode != 'RND') and (target_index is not None):
                                 k = int(trial_mode)  # k ∈ {1,2,4}
-                                prior_len = len(inspected_indices) - 1  # exclude the *current* (leaving) fixation
+                                prior_len = len(inspected_indices) - 1  # exclude current (leaving) fixation
                                 if prior_len >= k:
                                     cand_hist_idx = prior_len - k
                                     cand_idx      = inspected_indices[cand_hist_idx]
@@ -416,7 +532,7 @@ def run_evading_target_dynamic_trials(win, el_tracker, screen_width, screen_heig
                     
                                     if cand_idx != target_index:
                                         age_ok = (now_t - cand_time) >= holdoff_by_k.get(k, 0.0)
-                                        gx, gy = cluster_cx, cluster_cy  # center of the fixation that just ended
+                                        gx, gy = cluster_cx, cluster_cy
                                         dxg = gabors[cand_idx].pos[0] - gx
                                         dyg = gabors[cand_idx].pos[1] - gy
                                         sep_mult_by_k = {1: 2.25, 2: 1.50, 4: 1.00}
@@ -424,10 +540,7 @@ def run_evading_target_dynamic_trials(win, el_tracker, screen_width, screen_heig
                                         sep_ok  = (dxg*dxg + dyg*dyg) >= (sep_req * sep_req)
                     
                                         if age_ok and sep_ok:
-                                            # remember previous target position (centered coords) BEFORE swapping
                                             prev_target_pos_c = gabors[target_index].pos if target_index is not None else None
-                                        
-                                            # promote candidate to target; demote old target
                                             gabors[cand_idx].ori = target_orientation
                                             gabors[cand_idx].sf  = target_sf
                                             if target_index is not None:
@@ -435,15 +548,11 @@ def run_evading_target_dynamic_trials(win, el_tracker, screen_width, screen_heig
                                                 gabors[target_index].sf  = random.choice(spatial_frequencies)
                                             target_index = cand_idx
                                             nback_used_seq.append(k)
-                                        
-                                            # log jump for forgiveness window
                                             if prev_target_pos_c is not None:
                                                 score_prev_target_pos_c = prev_target_pos_c
                                                 score_target_change_time = now_t
 
-                    
-                            # 2) global camo mask (re-randomize ALL distractors)
-                            #    (Target keeps its signature features; exclude it here.)
+                            # global camo mask (re-randomize ALL distractors; keep target as-is)
                             refresh_all_distractors(gabors, exclude_idx=target_index)
                     
                         # reset cluster for next fixation
@@ -451,23 +560,27 @@ def run_evading_target_dynamic_trials(win, el_tracker, screen_width, screen_heig
                         cluster_len = 1
                         committed_this_cluster = False
 
-                
-                # if there was no new eye sample this frame, we simply skip gaze logic
-
-
                 # draw scene
                 for g in gabors: g.draw()
                 win.flip()
 
-                keys = event.getKeys(keyList=["space", "escape"], timeStamped=trial_clock)  # space only
+                # ----- responses: Cedrus first (ANY button = SPACE), then keyboard -----
+                if cedrus and _cedrus_any_pressed(cedrus):
+                    response = "space"
+                    rt = trial_clock.getTime()
+                    break
+
+                keys = event.getKeys(keyList=["space", "escape"], timeStamped=trial_clock)
                 if keys:
                     k, t0 = keys[0]
                     if k == "escape":
                         el_tracker.sendMessage('stimulus_offset')
                         el_tracker.stopRecording()
                         return filename
-                    response, rt = k, t0
-                    break
+                    if k == "space":
+                        response = "space"
+                        rt = t0
+                        break
 
                 core.wait(movement_delay)
 
@@ -513,22 +626,26 @@ def run_evading_target_dynamic_trials(win, el_tracker, screen_width, screen_heig
                 is_correct = False
                 feedback_text = timeout_feedback_text
 
-
-
-            feedback = visual.TextStim(win, text=feedback_text, color="white", height=40)
+            feedback = visual.TextStim(win, text=feedback_text, color="white", height=40, units='pix')
+            
+            # Update "X/total" text
+            progress_text.text = f"{trial + 1}/{num_trials}"
+            
+            # Draw feedback + progress count
             feedback.draw()
+            progress_text.draw()
             win.flip()
             core.wait(feedback_duration)
             event.clearEvents(eventType='keyboard')
 
             response_num = 1 if response == "space" else 0         
             writer.writerow([
-                                "dynamic task", participant_id, trial + 1, int(target_present),
-                                response_num, int(is_correct), rt,
-                                num_gabors, gabor_trajectory, target_trajectory, round(speed_px_per_sec, 2),
-                                trial_mode,                 # NBackK: 1/2/4 or 'RND'
-                                nback_used_seq,             # NBackUsedSeq (will stay [] for 'RND')
-                                fix_log,
-                                round(last_fix_on_target_time, 4) if last_fix_on_target_time is not None else "",
-                                last_committed_fix_idx if last_committed_fix_idx is not None else ""
-                            ])
+                "evading target dynamic task", participant_id, trial + 1, int(target_present),
+                response_num, int(is_correct), rt,
+                num_gabors, gabor_trajectory, target_trajectory, round(speed_px_per_sec, 2),
+                trial_mode,                 # NBackK: 1/2/4 or 'RND'
+                nback_used_seq,             # NBackUsedSeq (will stay [] for 'RND')
+                fix_log,
+                round(last_fix_on_target_time, 4) if last_fix_on_target_time is not None else "",
+                last_committed_fix_idx if last_committed_fix_idx is not None else ""
+            ])
