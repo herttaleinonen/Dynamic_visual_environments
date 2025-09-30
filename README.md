@@ -10,7 +10,7 @@ The main.py runs a set of experiments developed to study dynamic visual search.
 
 4. Dynamic Evading-Target Search task (evading_target_dynamic_task.py). Same as Task 3, but the Gabors move continuously.
 
-In addition to the main experimental tasks there is a visibility_task.py to measure the visibility of the search array, and a test_task.py to test the eye traker's calibration. All tasks can be run with main.py. 
+In addition to the main experimental tasks there is a visibility_task.py to measure the visibility of the search array, and a test_task.py to test the eye tracker's calibration. All tasks can be run with main.py. 
 
 
 # Running the experiment
