@@ -5,6 +5,7 @@ Created on Wed May 28 11:28:41 2025
 
 @author: herttaleinonen
 
+
     Provides run_dynamic_trials() for calling from main.py after EyeLink setup.
     Displays dynamic Gabor arrays on a Gaussian noise background,
     flashes a fixation cross between trials for 0.5s,
@@ -23,6 +24,7 @@ from config import (
     orientations, spatial_frequencies, target_orientation,
     target_sf, transition_steps, movement_delay
 )
+
 # --------- Cedrus–response box setup (safe if pyxid2 missing) ---------
 try:
     import pyxid2
@@ -63,6 +65,7 @@ def _cedrus_flush(dev, dur=0.12):
     except Exception as e:
         print(f"[Cedrus] flush failed: {e}")
 
+
 def _cedrus_any_pressed(dev) -> bool:
     """True if *any* Cedrus key press event is available (drains one batch)."""
     if not dev:
@@ -89,12 +92,13 @@ def _cedrus_any_pressed(dev) -> bool:
 
 # -------- Helper functions --------
 
-noise_grain = 3  # pixel x pixel
-
+# --- helper: screen-pixel gaze -> centered pix -> grid cell (ix, iy) ---
 def gaze_pix_to_grid(px, py, grid_offset_x, grid_offset_y, cell_size):
     gx = (px - grid_offset_x) / cell_size
     gy = (py - grid_offset_y) / cell_size
     return gx, gy
+
+noise_grain = 3  # pixel x pixel
 
 def generate_noise(screen_width, screen_height, grain_size=noise_grain):
     h_grains = int(np.ceil(screen_height / grain_size))
@@ -104,9 +108,11 @@ def generate_noise(screen_width, screen_height, grain_size=noise_grain):
     noise = np.repeat(np.repeat(small, grain_size, axis=0), grain_size, axis=1)
     return noise[:screen_height, :screen_width]
 
+# Center the grid
 def grid_to_pixel(x, y, offset_x, offset_y, cell_size):
     return (offset_x + x * cell_size, offset_y + y * cell_size)
 
+# Balance diagonal movement and avoid corners 
 def get_valid_moves(x, y, last_move):
     all_moves = [
         (4, 0), (-4, 0), (0, 4), (0, -4),
@@ -164,12 +170,14 @@ def run_dynamic_trials(win, el_tracker, screen_width, screen_height, participant
     # --- Instruction screen with example stimuli (text + icons) ---
     instruction_text = visual.TextStim(
         win,
-        text=("In the following task, you will see objects, and among them you have to find a target object.\n"
+        text=("In this task you will see moving objects, and among them you have to find a target object.\n"
               "The target object is tilted 45°.\n"
-              "Press 'SPACE' as soon as you see the target.\n"
+              "Press the GREEN button as soon as you see the target.\n"
+              "If you do not find the target, no not press anything.\n"
               "Each trial you have 7 seconds to respond.\n"
-              "Between trials there is a cross in the middle of the screen, try to focus your eyes there.\n"
-              "Press Enter to start."),
+              "Between trials a cross is shown in the middle of the screen, try to focus your eyes there.\n"
+              "\n"
+              "Press any button to start."),
         color='white', height=30, wrapWidth=screen_width * 0.8, units='pix'
     )
 
@@ -281,9 +289,7 @@ def run_dynamic_trials(win, el_tracker, screen_width, screen_height, participant
     
         return round(float(np.median(samples)), 3) if samples else ""
     
-
-
-    # Open CSV
+    # Open a CSV file for behavioural results
     with open(filename, mode='w', newline='') as file:
         writer = csv.writer(file)
         writer.writerow([
@@ -307,10 +313,13 @@ def run_dynamic_trials(win, el_tracker, screen_width, screen_height, participant
                 _cedrus_flush(cedrus)
             event.clearEvents(eventType='keyboard')
 
-
+            # Number of Gabors defined here
             num_gabors = 10
+            
+            # Target always present
             target_present = True
-
+            
+            # Generate the positions (grid coords)
             positions = [(random.randint(2, grid_size_x - 3), random.randint(2, grid_size_y - 3))
                          for _ in range(num_gabors)]
             target_index = random.randint(0, num_gabors - 1)
@@ -318,6 +327,7 @@ def run_dynamic_trials(win, el_tracker, screen_width, screen_height, participant
             distractor_oris = random.choices(orientations, k=num_gabors - 1)
             distractor_sfs  = random.choices(spatial_frequencies, k=num_gabors - 1)
 
+            # Create Gabors (all start as distractors; target revealed later at 0.5 s)
             gabors = []
             d_idx = 0
             for i in range(num_gabors):
@@ -351,15 +361,21 @@ def run_dynamic_trials(win, el_tracker, screen_width, screen_height, participant
             gabor_trajectory = []
             target_trajectory = []
 
-            # EyeLink start
+            # Put tracker in idle mode before recording
             el_tracker.setOfflineMode()
             el_tracker.sendCommand('clear_screen 0')
+            
+            # Send message "TRIALID" to mark the start of a trial
             el_tracker.sendMessage(f'TRIALID {trial + 1}')
+            
+            # Start recording
             el_tracker.startRecording(1, 1, 1, 1)
             core.wait(0.1)
+            
+            # Log a message to mark the onset of the stimulus
             el_tracker.sendMessage('stimulus_onset')
 
-            # Speed measuring
+            # Gabor speed measuring
             dist_px = 0.0
             prev_px = None
 
@@ -374,11 +390,11 @@ def run_dynamic_trials(win, el_tracker, screen_width, screen_height, participant
 
             # -------- frame loop --------
             while trial_clock.getTime() < trial_duration:
-                # noise
+                # update noise
                 noise_frames[bank_i].draw()
                 bank_i = (bank_i + 1) % len(noise_frames)
 
-                # move & draw gabors
+                # --- update random-walk targets & interpolate positions ---
                 frame_positions = []
                 for i in range(num_gabors):
                     if current_steps[i] >= transition_steps:
@@ -412,7 +428,7 @@ def run_dynamic_trials(win, el_tracker, screen_width, screen_height, participant
                         dist_px += (dx*dx + dy*dy) ** 0.5
                     prev_px = (tx, ty)
 
-                # EyeLink sample → EMA → centered coords → cluster commit
+                # --- read & smooth gaze ---
                 s = el_tracker.getNewestSample()
                 eye = None
                 if s and s.isRightSample():
@@ -420,6 +436,7 @@ def run_dynamic_trials(win, el_tracker, screen_width, screen_height, participant
                 elif s and s.isLeftSample():
                     eye = s.getLeftEye()
                 now_t = trial_clock.getTime()
+                
                 if eye is not None:
                     rx, ry = eye.getGaze()
                     if (rx is not None and ry is not None and rx > -1e5 and ry > -1e5):
@@ -453,7 +470,7 @@ def run_dynamic_trials(win, el_tracker, screen_width, screen_height, participant
                             cluster_cy = gy
                             committed_this_cluster = False
 
-                # draw all gabors and flip
+                # Draw all gabors and flip
                 for g in gabors: g.draw()
                 win.flip()
 
@@ -481,18 +498,23 @@ def run_dynamic_trials(win, el_tracker, screen_width, screen_height, participant
                 core.wait(movement_delay)
 
             # -------- end frame loop --------
-
+            
+            # Log a message to mark the offset of the stimulus
             el_tracker.sendMessage('stimulus_offset')
+            
+            # Stop recording
             el_tracker.stopRecording()
 
             elapsed = trial_clock.getTime()
             speed_px_per_sec = dist_px / elapsed if elapsed > 0 else 0.0
 
-            # Feedback
+            # Feedback (gaze-validated)
             if response:
+                # any committed target fixation during trial counts
                 recently_fixated_target = (last_fix_on_target_time is not None) and \
                                           ((rt - last_fix_on_target_time) <= gaze_to_press_max_lag)
 
+                # keypress fallback: near *current* target at press?
                 on_keypress_fixated_target = False
                 if response == "space" and target_index is not None:
                     tgx, tgy = gabors[target_index].pos
@@ -504,7 +526,8 @@ def run_dynamic_trials(win, el_tracker, screen_width, screen_height, participant
                         if last_fix_on_target_time is None:
                             last_fix_on_target_time = rt
                             last_committed_fix_idx = target_index
-
+                
+                # if we accepted via a fallback and no time logged yet, fill it for CSV
                 is_correct = (response == "space") and (recently_fixated_target or on_keypress_fixated_target)
                 feedback_text = "Correct" if is_correct else "Incorrect"
             else:
@@ -513,14 +536,17 @@ def run_dynamic_trials(win, el_tracker, screen_width, screen_height, participant
                 feedback_text = timeout_feedback_text
 
             feedback = visual.TextStim(win, text=feedback_text, color="white", height=40, units='pix')
+            
+            # Update "X/total" text
             progress_text.text = f"{trial + 1}/{num_trials}"
+            
+            # Draw feedback + progress count
             feedback.draw(); progress_text.draw()
             win.flip(); core.wait(feedback_duration)
             
             event.clearEvents(eventType='keyboard')
             if cedrus:
                 _cedrus_flush(cedrus)
-
 
             response_num = 1 if response == "space" else 0
             writer.writerow([
