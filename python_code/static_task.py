@@ -11,6 +11,7 @@ Created on Wed May 28 12:40:52 2025
       - Response: SPACE (keyboard) or any Cedrus button.
       - Correctness: lenient gaze-on-target recently or at keypress.
 """
+
 import os
 import csv
 import random
@@ -24,6 +25,7 @@ from config import (
     orientations, spatial_frequencies, target_orientation,
     target_sf, movement_delay
 )
+
 # --------- Cedrus–response box setup (safe if pyxid2 missing) ---------
 
 try:
@@ -64,7 +66,6 @@ def _cedrus_flush(dev, dur=0.12):
             dev.clear_response_queue()
     except Exception as e:
         print(f"[Cedrus] flush failed: {e}")
-
 
 def _cedrus_any_pressed(dev) -> bool:
     """True if *any* Cedrus key press event is available (drains one batch)."""
@@ -115,7 +116,8 @@ def run_static_trials(win, el_tracker,
     capture_radius_px = max(int(cell_size * 3.0), 160)
     gaze_to_press_max_lag = trial_duration
     gauss_k = 6.0
-
+    
+    # for scoring
     def target_accept_radius_px():
         # PsychoPy 'gauss' mask: σ ≈ size/6
         sigma = cell_size / 6.0
@@ -134,12 +136,13 @@ def run_static_trials(win, el_tracker,
     # ---------- Instruction screen ----------
     inst = visual.TextStim(
         win,
-        text=("In the following task, you will see objects, and among them you have to find a target object.\n"
+        text=("In this task you will see objects, and among them you have to find a target object.\n"
               "The target object is tilted 45°.\n"
-              "Press 'SPACE' as soon as you see the target.\n"
+              "Press the GREEN button as soon as you see the target.\n"
               "Each trial you have 7 seconds to respond.\n"
-              "Between trials there is a cross in the middle of the screen, try to focus your eyes there.\n"
-              "Press Enter to start."),
+              "Between trials a cross is shown in the middle of the screen, try to focus your eyes there.\n"
+              "\n"
+              "Press any button to start."),
         color='white', height=30, wrapWidth=sw*0.8, units='pix'
     )
 
@@ -266,7 +269,6 @@ def run_static_trials(win, el_tracker,
         if not samples:
             return ""
         return round(float(np.median(samples)), 3)
-
 
     # ------- helper: Gaussian noise image -------
     def generate_noise(w, h, grain=noise_grain):
@@ -497,6 +499,7 @@ def run_static_trials(win, el_tracker,
                                 committed_this_cluster = False
 
                 core.wait(movement_delay)
+                
             # ---------- end while ----------
 
             # stimulus offset + stop recording
@@ -530,7 +533,11 @@ def run_static_trials(win, el_tracker,
                 corr = int(is_correct)
 
             fb = visual.TextStim(win, text=fb_text, color='white', height=40, units='pix')
+            
+            # Update "X/total" text
             progress_text.text = f"{t+1}/{num_trials}"
+            
+            # Draw feedback + progress count
             fb.draw(); progress_text.draw()
             win.flip(); core.wait(feedback_duration)
             
