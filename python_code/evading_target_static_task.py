@@ -14,6 +14,7 @@ Created on Tue Aug 26 12:22:50 2025
       - On that frame, all other distractors re-randomize (masked reveal).
       - Fixations are tracked continuously, but n-back retargeting only activates after the target appears (>= n s).        
 """
+
 import os
 import csv
 import random
@@ -35,6 +36,7 @@ except Exception:
     pyxid2 = None
 
 def _cedrus_open():
+    """Return first Cedrus device or None. Never raises."""
     if pyxid2 is None:
         return None
     try:
@@ -104,21 +106,22 @@ def run_evading_target_static_trials(win, el_tracker,
     filename = os.path.join(out_dir, f"results_{participant_id}_{timestamp}.csv")
 
     # ---------- Gaze & capture parameters ----------
-    prev_gx, prev_gy   = sw/2.0, sh/2.0
+    prev_gx, prev_gy   = sw/2.0, sh/2.0     # EMA state
     ema_alpha          = 0.55
-    fix_radius_px      = cell_size
-    min_fix_frames     = 4
-    capture_radius_px  = 2.0 * cell_size
-    appear_delay_s     = 0.5
-    min_gaze_sep_px    = 1.25 * cell_size
+    fix_radius_px      = cell_size          # ~35 px circle
+    min_fix_frames     = 4                  # ~65 ms @ 60 Hz
+    capture_radius_px  = 2.0 * cell_size    # snap a fixation to a Gabor if within this pixel radius
+    appear_delay_s     = 0.5                # target appears at 500 ms
+    min_gaze_sep_px    = 1.25 * cell_size   # avoid landing right under gaze
 
-    holdoff_by_k  = {
+    holdoff_by_k  = {                       # seconds, to avoid ping-ponging
         1: 0.35,
         2: 0.20,
         4: 0.12
     }
     # ------------------------------------------------
-
+    
+    # acceptance radius for correctness 
     def score_accept_radius_px():
         sigma = cell_size / 6.0
         return max(2.0 * capture_radius_px, 8.0 * sigma)
@@ -128,14 +131,14 @@ def run_evading_target_static_trials(win, el_tracker,
     grid_h = grid_size_y * cell_size
     off_x = -grid_w / 2
     off_y = -grid_h / 2
-
+    
+    # --- helper: screen-pixel gaze -> centered pix -> grid cell (ix, iy) ---
     def pix_to_grid(fx_c, fy_c):
         gx = (fx_c - off_x) / cell_size
         gy = (fy_c - off_y) / cell_size
         ix = int(np.clip(np.round(gx), 0, grid_size_x - 1))
         iy = int(np.clip(np.round(gy), 0, grid_size_y - 1))
         return ix, iy
-
    
     # ----- Cedrus open (optional) -----
     cedrus = _cedrus_open()
@@ -147,15 +150,18 @@ def run_evading_target_static_trials(win, el_tracker,
     # --- Instruction screen with example stimuli (text + icons) ---
     inst = visual.TextStim(
         win,
-        text=("In the following task, you will see objects, and among them you have to find a target object.\n"
+        text=("In this task you will see moving objects, and among them you have to find a target object.\n"
               "The target object is tilted 45°.\n"
-              "Press 'SPACE' as soon as you see the target.\n"
+              "Press the GREEN button as soon as you see the target.\n"
+              "If you do not find the target, no not press anything.\n"
               "Each trial you have 7 seconds to respond.\n"
-              "Between trials there is a cross in the middle of the screen, try to focus your eyes there.\n"
-              "Press Enter to start."),
+              "Between trials a cross is shown in the middle of the screen, try to focus your eyes there.\n"
+              "\n"
+              "Press any button to start."),
         color='white', height=30, wrapWidth=sw*0.8, units='pix'
     )
-
+    
+    # Draw example Gabors to the instruction screen
     example_stims = []
     row_y   = -int(sh * 0.22)
     gap     = int(cell_size * 0.6)
@@ -193,7 +199,6 @@ def run_evading_target_static_trials(win, el_tracker,
     lab_t = visual.TextStim(win, text="Target (45°)", color='white', height=22,
                             pos=(tgt_x, tgt_y - int(0.12 * sh)), units='pix')
 
-    # Draw
     inst.draw()
     for s in example_stims: s.draw()
     lab_d.draw(); lab_t.draw()
@@ -231,6 +236,7 @@ def run_evading_target_static_trials(win, el_tracker,
         j = int(np.argmin(d2))
         return None if np.isinf(d2[j]) else j
     
+    # Measure distance of gaze from the center of the fixation cross in degrees
     def measure_fixation_drift(trial_idx, duration=0.5):
         """
         Show a fixation cross for `duration` sec while recording from EyeLink,
@@ -245,6 +251,7 @@ def run_evading_target_static_trials(win, el_tracker,
     
         # Short recording for the fix-check
         try:
+            # Put tracker in idle mode before recording
             el_tracker.setOfflineMode()
             el_tracker.sendMessage(f'FIXCHECK_START {trial_idx}')
             el_tracker.startRecording(1, 1, 1, 1)
@@ -279,7 +286,7 @@ def run_evading_target_static_trials(win, el_tracker,
     
         return round(float(np.median(samples)), 3) if samples else ""
 
-
+    # Open a CSV file for behavioural results
     with open(filename, 'w', newline='') as f:
         writer = csv.writer(f)
         writer.writerow([
@@ -288,12 +295,14 @@ def run_evading_target_static_trials(win, el_tracker,
             'NumGabors','GaborPos','Target Trajectory','NBackK','NBackUsedSeq', 'Fixations',
             'FixOnTargetTime(s)','LastFixIndex', 'CalibrationDrift(deg)'
         ])
-
+        
+        # --- Progress text shown during feedback ---
         progress_text = visual.TextStim(
             win, text="", color='white', height=28,
             pos=(0, -int(screen_height * 0.18)), units='pix'
         )
-
+        
+        # ---- Balanced per-trial "mode": 1-back, 2-back, 4-back, or RANDOM target (¼ each) ----
         def make_balanced_k_sequence(n_trials):
             ks = []
             base = n_trials // 4
@@ -321,12 +330,15 @@ def run_evading_target_static_trials(win, el_tracker,
             if cedrus and hasattr(cedrus, "clear_response_queue"):
                 cedrus.clear_response_queue()
 
-
             # per-trial k
+            # Target always present, and pick the mode (1/2/4 or 'RND') for this trial
             tp = True
             trial_k = k_seq[k_idx]; k_idx += 1
-
+            
+            # Number of Gabors defined here
             n  = random.choice([10])
+            
+            # Generate the positions (grid coords)
             pos = []
             while len(pos) < n:
                 x = random.randint(2, grid_size_x-3)
@@ -334,7 +346,8 @@ def run_evading_target_static_trials(win, el_tracker,
                 if (x,y) not in pos:
                     pos.append((x,y))
             tgt_idx = None
-
+            
+            # Create Gabors (all start as distractors; target revealed later at 0.5 s)
             gabors = []
             centers_pix = []
             for i in range(n):
@@ -348,6 +361,7 @@ def run_evading_target_static_trials(win, el_tracker,
                 centers_pix.append((px, py))
             centers_pix = np.array(centers_pix, dtype=float)
 
+            # update noise
             noise_img = generate_noise(sw, sh, noise_grain)
             noise_stim = visual.ImageStim(win, image=noise_img,
                                           size=(sw,sh), units='pix', interpolate=False)
@@ -355,14 +369,22 @@ def run_evading_target_static_trials(win, el_tracker,
             # EyeLink
             clk = core.Clock()
             if el_tracker:
+                # Put tracker in idle mode before recording
                 el_tracker.setOfflineMode()
                 el_tracker.sendCommand('clear_screen 0')
+                
+                # Send message "TRIALID" to mark the start of a trial
                 el_tracker.sendMessage(f'TRIALID {t+1}')
+                
+                # Start recording
                 el_tracker.startRecording(1,1,1,1)
                 core.wait(0.1)
+                
+                # Log a message to mark the onset of the stimulus
                 el_tracker.sendMessage('stimulus_onset')
             event.clearEvents(eventType='keyboard')
-
+            
+            # scoring-only gaze state 
             inspected_idxs   = []
             inspected_times  = []
             nback_used_seq   = []
@@ -381,6 +403,7 @@ def run_evading_target_static_trials(win, el_tracker,
             score_target_change_time = -1e9
             score_change_grace       = 0.8
 
+            # helper to mask a reveal/jump by re-randomizing all distractors
             def refresh_all_distractors(exclude_idx=None):
                 for j in range(n):
                     if exclude_idx is not None and j == exclude_idx:
@@ -404,7 +427,7 @@ def run_evading_target_static_trials(win, el_tracker,
                     armed = True
                     target_traj.append(pos[tgt_idx])
 
-                # sample gaze + EMA smoothing
+                # --- read & smooth gaze ---
                 if el_tracker:
                     s = el_tracker.getNewestSample()
                     if s and s.isRightSample():
@@ -417,9 +440,12 @@ def run_evading_target_static_trials(win, el_tracker,
                         rx, ry = eye.getGaze()
                         prev_gx = float(np.clip(ema_alpha*rx + (1-ema_alpha)*prev_gx, 0, sw-1))
                         prev_gy = float(np.clip(ema_alpha*ry + (1-ema_alpha)*prev_gy, 0, sh-1))
-
+                        
+                        # for scoring (correct/incorrect) convert screen → centered for scoring 
                         score_gx_c = prev_gx - (sw/2.0)
                         score_gy_c = (sh/2.0) - prev_gy
+                        
+                        # If target exists, accept even a single-frame dwell inside a large radius
                         if tgt_idx is not None:
                             tgx, tgy = gabors[tgt_idx].pos
                             d = ((score_gx_c - tgx)**2 + (score_gy_c - tgy)**2) ** 0.5
@@ -430,7 +456,8 @@ def run_evading_target_static_trials(win, el_tracker,
                                     last_committed_fix_idx  = tgt_idx
                             else:
                                 score_inside_count = 0
-
+                        
+                        # fixation clustering (in screen coords for cluster center)
                         dx = prev_gx - cluster_cx
                         dy = prev_gy - cluster_cy
                         inside = (dx*dx + dy*dy) <= (fix_radius_px*fix_radius_px)
@@ -439,10 +466,13 @@ def run_evading_target_static_trials(win, el_tracker,
                             w = 1.0 / max(1, cluster_len)
                             cluster_cx = (1 - w)*cluster_cx + w*prev_gx
                             cluster_cy = (1 - w)*cluster_cy + w*prev_gy
-
+                            
+                            # map fixation to nearest Gabor center (in pixels), with capture radius
                             if (not committed_this_cluster) and (cluster_len == min_fix_frames):
                                 fx_c = cluster_cx - sw/2.0
                                 fy_c =  sh/2.0 - cluster_cy
+                                
+                                # log fixation location (grid cell) and add to inspection history
                                 ix, iy = pix_to_grid(fx_c, fy_c)
                                 fix_log.append((ix, iy))
 
@@ -452,7 +482,8 @@ def run_evading_target_static_trials(win, el_tracker,
                                     j = int(np.argmin(d2))
                                     if math.sqrt(d2[j]) <= capture_radius_px:
                                         current_idx = j
-
+                                        
+                                # if no capture, impute to nearest *distractor* (exclude target if known)
                                 if current_idx is None:
                                     imputed = nearest_distractor_index(centers_pix, fx_c, fy_c, exclude_idx=tgt_idx)
                                     if (imputed is not None) and (not inspected_idxs or inspected_idxs[-1] != imputed):
@@ -466,6 +497,8 @@ def run_evading_target_static_trials(win, el_tracker,
                                 committed_this_cluster = True
                         else:
                             if cluster_len >= min_fix_frames:
+                                
+                                # n-back retargeting (only after reveal) — skip if mode is 'RND'
                                 if armed and (tgt_idx is not None):
                                     if trial_k == 'RND':
                                         pool = [i for i in range(n) if i != tgt_idx]
@@ -508,14 +541,16 @@ def run_evading_target_static_trials(win, el_tracker,
                                                     if prev_target_pos_c is not None:
                                                         score_prev_target_pos_c = prev_target_pos_c
                                                         score_target_change_time = now_t
-
+                                
+                                # global camo mask (re-randomize ALL distractors; keep target as-is)
                                 refresh_all_distractors(exclude_idx=tgt_idx)
-
+                            
+                            # reset cluster for next fixation
                             cluster_cx, cluster_cy = prev_gx, prev_gy
                             cluster_len = 1
                             committed_this_cluster = False
 
-                # draw scene
+                # Draw scene
                 noise_stim.draw()
                 for g in gabors: g.draw()
                 win.flip()
@@ -539,26 +574,33 @@ def run_evading_target_static_trials(win, el_tracker,
                         break
 
                 core.wait(movement_delay)
-
+            
+            # Log a message to mark the offset of the stimulus
             if el_tracker:
                 el_tracker.sendMessage('stimulus_offset')
+                
+                # Stop recording
                 el_tracker.stopRecording()
 
-            # feedback (gaze-validated scoring overlay)
+            # feedback (gaze-validated)
             if response is None:
                 fb_text = timeout_feedback_text
                 resp_csv = 0
                 rt_str   = ''
                 corr     = 0
             else:
+                # any committed target fixation during trial counts
                 recently_fixated_target = (last_fix_on_target_time is not None)
+                
+                # keypress fallback: near *current* target at press?
                 on_keypress_fixated_target = False
                 if tgt_idx is not None:
                     tgx, tgy = gabors[tgt_idx].pos
                     d_curr = ((score_gx_c - tgx)**2 + (score_gy_c - tgy)**2) ** 0.5
                     if d_curr <= score_accept_radius_px():
                         on_keypress_fixated_target = True
-
+                
+                # jump forgiveness: if the target jumped recently, also accept proximity to the *previous* target
                 near_prev_after_jump = False
                 if (not on_keypress_fixated_target) and (score_prev_target_pos_c is not None):
                     if (rt - score_target_change_time) <= score_change_grace:
@@ -568,7 +610,8 @@ def run_evading_target_static_trials(win, el_tracker,
                             near_prev_after_jump = True
 
                 is_correct = recently_fixated_target or on_keypress_fixated_target or near_prev_after_jump
-
+                
+                # if we accepted via a fallback and no time logged yet, fill it for CSV
                 if is_correct and (last_fix_on_target_time is None):
                     last_fix_on_target_time = rt
                     last_committed_fix_idx  = tgt_idx
@@ -579,7 +622,11 @@ def run_evading_target_static_trials(win, el_tracker,
                 corr     = int(is_correct)
 
             fb = visual.TextStim(win, text=fb_text, color='white', height=40, units='pix')
+            
+            # Update "X/total" text
             progress_text.text = f"{t+1}/{num_trials}"
+            
+            # Draw feedback + progress count
             fb.draw(); progress_text.draw()
             win.flip()
             core.wait(feedback_duration)
@@ -587,7 +634,8 @@ def run_evading_target_static_trials(win, el_tracker,
             if cedrus:
                 _cedrus_flush(cedrus)
             event.clearEvents(eventType='keyboard')
-
+            
+            # Write to csv
             writer.writerow([
                 'evading target static task',
                 participant_id,
