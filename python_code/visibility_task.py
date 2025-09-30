@@ -1,7 +1,5 @@
 #!/usr/bin/env python3
-# visibility_task.py
 # -*- coding: utf-8 -*-
-
 """
 Created on Tue Aug 5 12:34:21 2025
 
@@ -25,6 +23,7 @@ except Exception:
     pyxid2 = None
 
 def _cedrus_open():
+    """Return first Cedrus device or None. Never raises."""
     if pyxid2 is None:
         return None
     try:
@@ -45,6 +44,7 @@ def _cedrus_open():
         return None
 
 def _cedrus_flush(dev, dur=0.12):
+    """Drain any pending Cedrus events for ~dur seconds."""
     if not dev:
         return
     try:
@@ -61,6 +61,7 @@ def _cedrus_flush(dev, dur=0.12):
         print(f"[Cedrus] flush failed: {e}")
 
 def _cedrus_any_pressed(dev):
+    """True if *any* Cedrus key press event is available (drains one batch)."""
     if not dev:
         return False
     try:
@@ -103,6 +104,7 @@ def _cedrus_get_choice(dev):
     except Exception as e:
         print(f"[Cedrus] read failed: {e}")
         return None
+    
 # --------------------------------------------
 
 def run_visibility_trials(win, el_tracker, screen_width, screen_height,
@@ -127,13 +129,14 @@ def run_visibility_trials(win, el_tracker, screen_width, screen_height,
     px_per_deg   = float(cell_size)
     sf_cpd       = float(target_sf) * px_per_deg
     gabor_size_d = 1.0
-
-    distances_deg     = [3, 6, 12, 20]
-    orientation_diffs = [-45, -25, 0, 25, 45]
-    fixation_duration = 0.5
-    stimulus_duration = 0.2
-    noise_grain       = 3
-
+    # Gabir stimulus
+    distances_deg     = [3, 6, 12, 20] # distance from the center of the screen (in degrees)
+    orientation_diffs = [-45, -25, 0, 25, 45] # difference in orientation in comparison to the target (in degrees)
+    fixation_duration = 0.5 # fixation cross duration between trials in s 
+    stimulus_duration = 0.2 # stimulus duration in s
+    noise_grain       = 3 # size of the background noise (pixel x pixel)
+    
+    # create ori + distance pairs
     combos = []
     for ecc in distances_deg:
         for diff in orientation_diffs:
@@ -156,6 +159,7 @@ def run_visibility_trials(win, el_tracker, screen_width, screen_height,
         rng.shuffle(partial)
         trials.extend(partial[:remainder])
 
+    # write to console if cedrus is available
     cedrus = _cedrus_open()
     if cedrus:
         print("[Cedrus] Connected. GREEN(key 3)=Yes, RED(key 1)=No.")
@@ -163,25 +167,28 @@ def run_visibility_trials(win, el_tracker, screen_width, screen_height,
         print("[Cedrus] Not found (or pyxid2 missing). Keyboard only.")
 
     fixation = visual.TextStim(win, text='+', height=1, color='black', units='deg')
-
+    
     gabor = visual.GratingStim(
         win, tex='sin', mask='gauss', size=gabor_size_d,
         sf=sf_cpd, ori=0, units='deg', phase=0.25, contrast=1.0
     )
 
+    # Initialize background noise
     def generate_noise():
         h_grains = int(math.ceil(screen_height_pix / noise_grain))
         w_grains = int(math.ceil(screen_width_pix  / noise_grain))
         small = np.clip(np.random.normal(0, 0.3, (h_grains, w_grains)), -1, 1)
         noise = np.repeat(np.repeat(small, noise_grain, axis=0), noise_grain, axis=1)
         return noise[:screen_height_pix, :screen_width_pix]
-
+    
+    # Initialize instruction screen
     inst = visual.TextStim(
         win,
-        text=("In this task, a single Gabor object will briefly appear on static noise at different eccentricities.\n"
-              "If it is the TARGET (45° tilt), press GREEN button.\n"
-              "If it is a DISTRACTOR (any other tilt), or you did not see the object, press RED button.\n"
-              "Between trials there is a cross in the middle of the screen, try to focus your eyes there.\n"
+        text=("In this task, a single object will briefly appear on static noise at different eccentricities.\n"
+              "If it is the TARGET object (45° tilt), press GREEN button.\n"
+              "If it is a DISTRACTOR object (any other tilt), or you did not see the object, press RED button.\n"
+              "Between trials a cross is shown in the middle of the screen, try to focus your eyes there.\n"
+              "\n"
               "Press any button to start." ),
         color='white', height=30, wrapWidth=screen_width_pix * 0.85, units='pix',
         pos=(0, screen_height_pix * 0.24)
@@ -195,7 +202,8 @@ def run_visibility_trials(win, el_tracker, screen_width, screen_height,
     n_d = len(distractor_oris)
     row_w_deg   = n_d * gabor_size_d + (n_d - 1) * gap_deg
     start_x_deg = -row_w_deg / 2 + gabor_size_d / 2
-
+    
+    # Draw example Gabors to the instruction screen
     example_stims = []
     for i, ori in enumerate(distractor_oris):
         g_ex = visual.GratingStim(
@@ -228,6 +236,7 @@ def run_visibility_trials(win, el_tracker, screen_width, screen_height,
     lab_d.draw(); lab_t.draw()
     win.flip()
 
+    # Check if cedrus/keyboard response has been registered
     if cedrus:
         while True:
             if _cedrus_any_pressed(cedrus):
@@ -242,7 +251,8 @@ def run_visibility_trials(win, el_tracker, screen_width, screen_height,
     else:
         event.waitKeys(keyList=['return', 'enter'])
     event.clearEvents(eventType='keyboard')
-
+    
+    # measure fixation accutracy during the fixation cross and write to csv 
     def measure_fixation_drift(trial_idx, duration=0.5, bg=None):
         if not el_tracker:
             t0 = core.Clock()
