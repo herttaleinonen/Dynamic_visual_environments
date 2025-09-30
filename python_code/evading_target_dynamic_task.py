@@ -12,7 +12,8 @@ Created on Wed Sep 3 12:15:16 2025
     
       - On target-present trials, the target appears at n s by taking over a distractor (appear_delay).
       - On that frame, all other distractors re-randomize (masked reveal).
-      - Fixations are tracked continuously, but n-back retargeting only activates after the target appears (>= n s).     
+      - Fixations are tracked continuously, but n-back retargeting only activates after the target appears (>= n s).
+         
 """
 
 import os
@@ -27,6 +28,7 @@ from config import (
     orientations, spatial_frequencies, target_orientation,
     target_sf, transition_steps, movement_delay
 )
+
 # --------- Cedrus–response box setup (safe if pyxid2 missing) ---------
 try:
     import pyxid2
@@ -117,7 +119,8 @@ def generate_noise(screen_width, screen_height, grain_size=noise_grain):
 # Center the grid
 def grid_to_pixel(x, y, offset_x, offset_y, cell_size):
     return (offset_x + x * cell_size, offset_y + y * cell_size)
- 
+
+# Balance diagonal movement and avoid corners 
 def get_valid_moves(x, y, last_move):
 
     all_moves = [
@@ -166,7 +169,7 @@ def run_evading_target_dynamic_trials(win, el_tracker, screen_width, screen_heig
     min_fix_frames     = 4                    # ~65 ms @ 60 Hz
     capture_radius_px  = 1.5 * cell_size      # snap a fixation to a Gabor if within this pixel radius
     min_gaze_sep_px    = 1.25 * cell_size     # avoid landing right under gaze
-    holdoff_by_k       = { 1: 0.45, 2: 0.10, 4: 0.00, 8: 0.00 }  # seconds
+    holdoff_by_k       = { 1: 0.45, 2: 0.10, 4: 0.00, 8: 0.00 }  # seconds, avoid ping-ponging
     appear_delay_s     = 0.5                  # target appears at 500 ms
     # -------------------------------------------------------------------
     
@@ -206,12 +209,14 @@ def run_evading_target_dynamic_trials(win, el_tracker, screen_width, screen_heig
     # --- Instruction screen with example stimuli (text + icons) ---
     instruction_text = visual.TextStim(
         win,
-        text=("In the following task, you will see objects, and among them you have to find a target object.\n"
+        text=("In this task you will see objects, and among them you have to find a target object.\n"
               "The target object is tilted 45°.\n"
-              "Press 'SPACE' as soon as you see the target.\n"
+              "Press the GREEN button as soon as you see the target.\n"
+              "If you do not find the target, no not press anything.\n"
               "Each trial you have 7 seconds to respond.\n"
-              "Between trials there is a cross in the middle of the screen, try to focus your eyes there.\n"
-              "Press Enter to start."),
+              "Between trials a cross is shown in the middle of the screen, try to focus your eyes there.\n"
+              "\n"
+              "Press any button to start."),
         color='white', height=30, wrapWidth=screen_width * 0.8, units='pix'
     )
     
@@ -289,6 +294,8 @@ def run_evading_target_dynamic_trials(win, el_tracker, screen_width, screen_heig
     _cedrus_flush(cedrus)
     event.clearEvents(eventType='keyboard')  # keep buffer clean
     
+    
+    # Measure distance of gaze from the center of the fixation cross in degrees
     def measure_fixation_drift(trial_idx, duration=0.5):
         """
         Show a fixation cross for `duration` sec while recording from EyeLink,
@@ -341,7 +348,6 @@ def run_evading_target_dynamic_trials(win, el_tracker, screen_width, screen_heig
     # Open a CSV file for behavioural results
     with open(filename, mode='w', newline='') as file:
         writer = csv.writer(file)
-        # original columns preserved; two extras appended at end
         writer.writerow(["Task Type", "Participant ID", "Trial", "Target Present", "Response", "Correct",
                          "Reaction Time (s)", "Num Gabors", "Gabor Positions", "Target Trajectory", "Speed (px/s)",
                          "NBackK", "NBackUsedSeq", "Fixations",
@@ -403,7 +409,6 @@ def run_evading_target_dynamic_trials(win, el_tracker, screen_width, screen_heig
             if cedrus and hasattr(cedrus, "clear_response_queue"):
                 cedrus.clear_response_queue()
 
-
             # Number of Gabors defined here
             num_gabors = random.choice([10])
 
@@ -458,7 +463,7 @@ def run_evading_target_dynamic_trials(win, el_tracker, screen_width, screen_heig
             cluster_len = 0
             committed_this_cluster = False
 
-            # NEW: appearance gate
+            # Appearance gate
             arm_at = trial_clock.getTime() + appear_delay_s
             armed  = False
 
@@ -667,7 +672,7 @@ def run_evading_target_dynamic_trials(win, el_tracker, screen_width, screen_heig
             # Stop recording
             el_tracker.stopRecording()
 
-            # feedback (gaze-validated)
+            # Feedback (gaze-validated)
             if response == "space":
                 # any committed target fixation during trial counts
                 recently_fixated_target = (last_fix_on_target_time is not None)
