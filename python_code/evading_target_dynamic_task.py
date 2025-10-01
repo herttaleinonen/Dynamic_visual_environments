@@ -196,7 +196,7 @@ def run_evading_target_dynamic_trials(win, el_tracker, screen_width, screen_heig
     ]
     bank_i = 0
 
-    # For CSV: keep a simple nominal speed (same as your earlier formula)
+    # For CSV: keep track of Gabor speed (px per s)
     speed_px_per_sec = (4 * cell_size) / (transition_steps * movement_delay)
     
     # ----- Cedrus open (optional) -----
