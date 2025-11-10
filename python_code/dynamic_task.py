@@ -242,7 +242,7 @@ def run_dynamic_trials(win, el_tracker, screen_width, screen_height, participant
         Show a fixation cross for `duration` sec while recording from EyeLink,
         return median angular error (deg) from center. Empty string if unavailable.
         """
-        # Make a local cross so we don’t rely on an outer variable
+        # Make a local cross
         cross = visual.TextStim(win, text='+', color='black', height=40, units='pix')
     
         # If no tracker, just display the cross and wait
@@ -494,7 +494,7 @@ def run_dynamic_trials(win, el_tracker, screen_width, screen_height, participant
                         rt = t0
                         break
                 
-                # pace the loop (only if we didn't break)
+                # pace the loop 
                 core.wait(movement_delay)
 
             # -------- end frame loop --------
@@ -527,7 +527,7 @@ def run_dynamic_trials(win, el_tracker, screen_width, screen_height, participant
                             last_fix_on_target_time = rt
                             last_committed_fix_idx = target_index
                 
-                # if we accepted via a fallback and no time logged yet, fill it for CSV
+                # if accepted via a fallback and no time logged yet, fill it for CSV
                 is_correct = (response == "space") and (recently_fixated_target or on_keypress_fixated_target)
                 feedback_text = "Correct" if is_correct else "Incorrect"
             else:
