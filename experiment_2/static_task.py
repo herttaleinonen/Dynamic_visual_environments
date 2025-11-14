@@ -258,7 +258,7 @@ def run_static_trials(win, el_tracker,
         text=("In this task you will see objects, and among them you have to find a target object.\n"
               "The target object is tilted 45°.\n"
               "Press the GREEN button as soon as you see the target.\n"
-              "If you do not find the target, no not press anything.\n"
+              "If you do not find the target, press the RED button.\n"
               "Each trial you have 7 seconds to respond.\n"
               "Between trials a cross is shown in the middle of the screen, try to focus your eyes there.\n"
               "\n"
