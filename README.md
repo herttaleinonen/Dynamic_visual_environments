@@ -2,16 +2,6 @@
 
 The main.py runs a set of experiments developed to study dynamic visual search. 
 
-1. Static Visual Search task (static_task.py). Gabors remain in fixed positions throughout the trial. The target appears either at a random location or at the same location as in one of the previous 1–4 trials.
-
-2. Dynamic Visual Search task (dynamic_task.py). Gabors move continuously along unpredictable paths during the trial.
-
-3. Static Evading-Target Search task (evading_target_static_task.py). The target’s location is dynamically manipulated based on the participant’s eye movements. Shortly after the search begins, the target reappears at locations corresponding to 1–4 previous fixations, replacing distractors that have already been inspected.
-
-4. Dynamic Evading-Target Search task (evading_target_dynamic_task.py). Same as Task 3, but the Gabors move continuously.
-
-In addition to the main experimental tasks there is a visibility_task.py to measure the visibility of the search array, and a test_task.py to test the eye tracker's calibration. All tasks can be run with main.py. 
-
 
 # Running the experiment
 
