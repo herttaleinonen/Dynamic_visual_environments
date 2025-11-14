@@ -1,6 +1,6 @@
 # The experimental setup
 
-The main.py runs a set of experiments developed to study dynamic visual search. 
+main.py runs a set of experiments developed to study dynamic visual search. 
 
 
 # Running the experiment
