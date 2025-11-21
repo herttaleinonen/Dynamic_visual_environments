@@ -10,7 +10,8 @@ Created on Wed May 28 11:28:41 2025
     Displays dynamic Gabor arrays on a Gaussian noise background,
     flashes a fixation cross between trials for 0.5s,
     collects responses during the trial duration window,
-    provides feedback between trials, incorrect/correct based on responses.
+    provides feedback between trials, incorrect/correct based on gaze coordinates.
+    
 """
 
 import os
@@ -283,10 +284,10 @@ def run_dynamic_trials(win, el_tracker, screen_width, screen_height, participant
 
     instruction_text = visual.TextStim(
         win,
-        text=("In this task you will see moving objects, and among them you have to find a target object.\n"
+        text=("In this task you will see 10 objects, and among them you have to find a target object.\n"
               "The target object is tilted 45°.\n"
               "Press the GREEN button as soon as you see the target.\n"
-              "If you do not find the target, press the RED button.\n"
+              "Press the RED button, If you do not find the target.\n"
               "Each trial you have 7 seconds to respond.\n"
               "Between trials a cross is shown in the middle of the screen, try to focus your eyes there.\n"
               "\n"
@@ -347,7 +348,7 @@ def run_dynamic_trials(win, el_tracker, screen_width, screen_height, participant
     _cedrus_flush(cedrus)
     event.clearEvents(eventType='keyboard')
     
-    
+    # (old measure_fixation_drift is still defined below if you want it, but we won't use it anymore)
     def measure_fixation_drift(trial_idx, duration=0.5):
         cross = visual.TextStim(win, text='+', color='black', height=40, units='pix')
         if not el_tracker:
@@ -403,7 +404,7 @@ def run_dynamic_trials(win, el_tracker, screen_width, screen_height, participant
 
         # -------- Trials --------
         for trial in range(num_trials):
-            # wait for central fixation gate before each trial
+            # NEW: wait for central fixation gate before each trial
             ok, drift_deg = wait_for_central_fixation(
                 win, el_tracker, screen_width, screen_height,
                 deg_thresh=2.499, hold_ms=200,  # you can tweak these
@@ -411,7 +412,7 @@ def run_dynamic_trials(win, el_tracker, screen_width, screen_height, participant
                 max_wait_s=None                  # None = wait indefinitely
             )
             if not ok:
-                # If max_wait_s is set and it times out, bail out cleanly
+                # If you ever set max_wait_s and it times out, bail out cleanly
                 print(f"[FIXGATE] Trial {trial+1}: timed out waiting for central fixation.")
                 return filename
 
@@ -644,4 +645,3 @@ def run_dynamic_trials(win, el_tracker, screen_width, screen_height, participant
                 last_committed_fix_idx if (target_present and last_committed_fix_idx is not None) else "",
                 drift_deg
             ])
-
