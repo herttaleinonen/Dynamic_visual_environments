@@ -2,7 +2,8 @@
 
 Set of experiments developed to study visual search in dynamic environments. 
 
-
+![alt text](https://github.com/herttaleinonen/Dynamic_visual_environments/blob/main/experiment_1/results/Picture%201.png
+)
 
 # Running the experiment
 
