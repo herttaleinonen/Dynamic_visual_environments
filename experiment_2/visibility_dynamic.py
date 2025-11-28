@@ -138,7 +138,8 @@ def run_dynamic_visibility_trials(win, el_tracker, screen_width, screen_height,
         orientations = (170, 135, 120, 80, 20)
 
     px_per_deg   = float(cell_size)
-    distances_deg = [3, 6, 12, 20]
+                              
+    distances_deg = [3, 6, 12, 16, 20]
 
     distractor_oris = list(orientations)
 
