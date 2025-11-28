@@ -1,6 +1,7 @@
 # The experimental setup
 
-Set of experiments developed to study dynamic visual search. 
+Set of experiments developed to study visual search in dynamic environments. 
+
 
 
 # Running the experiment
