@@ -15,10 +15,7 @@ Responses are right/left arrow on keyboard or keys 1 and 3 on Cedrus.
     
     - Eccentricities are: 3, 6, 12, 16, 20 deg.
     - No eccentricity clamping. Instead, gabor is auto-scaled per trial to prevent clipping.
-
 """
-
-
 
 import os
 import random
