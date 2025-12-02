@@ -8,11 +8,12 @@ Example of a search task:
 
 # Running the experiment
 
-Requires python3 (3.10.0) and PsychoPy (2024.2.4).
+Requirements 
 
-Requires EyeLink 1000 Plus + pylink to run with eye tracking. 
-
-Optional Cedrus response box support (requires RB-530 or similar + pyxid2). 
+- python3 (3.10.0)
+- PsychoPy (2024.2.4)
+- EyeLink 1000 Plus + pylink to run with eye tracking. 
+- RB-530 or similar + pyxid2 to run with Cedrus response box (optional). 
 
 To run main.py through PsychoPy Coder, place EyeLinkCoreGraphicsPsychoPy.py (from SR research) into the project folder. 
 
