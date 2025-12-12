@@ -5,8 +5,7 @@ Created on Fri May 23 13:09:28 2025
 
 @author: herttaleinonen
 
-      Contains parameters for the tasks. 
-
+      Contains global parameters for the tasks. 
 """
 
 import numpy as np
