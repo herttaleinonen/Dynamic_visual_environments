@@ -18,7 +18,6 @@ from psychopy import visual, core, event, monitors, gui
 from string import ascii_letters, digits
 
 from dynamic_task import run_dynamic_trials  
-from visibility_task import run_visibility_trials 
 from visibility_dynamic import run_dynamic_visibility_trials 
 from test_task import run_square_test
 
@@ -181,12 +180,8 @@ if not dummy_mode:
 # Task picker (works inside PsychoPy) 
 tasks = {
     "1":  ("Calibration check task",     run_square_test),  
-    "2":  ("Visibility task 1",          run_visibility_trials),
-    "3":  ("Visibility task 2",          run_dynamic_visibility_trials),
-    "4":  ("Search task 1",              run_dynamic_trials),
-    "5":  ("Search task 2",              run_dynamic_trials),
-    "6":  ("Search task 3",              run_dynamic_trials),
-    "7":  ("Search task 4",              run_dynamic_trials)
+    "2":  ("Visibility task",            run_dynamic_visibility_trials),
+    "3":  ("Search task",                run_dynamic_trials)
 }
 
 # env var to skip menu, e.g. TASKS="1,4,6"
