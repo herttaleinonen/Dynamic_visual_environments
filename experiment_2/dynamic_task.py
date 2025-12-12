@@ -10,7 +10,7 @@ Created on Wed May 28 11:28:41 2025
     Displays dynamic Gabor arrays on a Gaussian noise background,
     flashes a fixation cross between trials for 0.5s,
     collects responses during the trial duration window,
-    provides feedback between trials, incorrect/correct based on gaze coordinates.
+    provides feedback between trials, incorrect/correct based on gaze response.
     
 """
 
@@ -26,13 +26,13 @@ from config import (
     target_sf, transition_steps, movement_delay
 )
 
-# ---------- central fixation gate (from your other task) ----------
+# ---------- central fixation gate ----------
 def wait_for_central_fixation(win, el_tracker, screen_width, screen_height,
                               deg_thresh=2.499, hold_ms=200,
                               cross_height=40, cross_color='black',
                               max_wait_s=None):
     """
-    Blocks until gaze is within `deg_thresh` of screen center for >= `hold_ms`.
+    Blocks next trial from starting until gaze is within `deg_thresh` of screen center for >= `hold_ms`.
     Returns (ok, drift_deg) where drift_deg is the median distance (deg) during the final hold.
 
     If `max_wait_s` is None → wait indefinitely. If timed out → returns (False, "").
@@ -52,7 +52,7 @@ def wait_for_central_fixation(win, el_tracker, screen_width, screen_height,
         el_tracker.startRecording(1, 1, 1, 1)
         core.wait(0.1)
     except Exception:
-        # If recording fails, at least show cross for a moment
+        # If recording fails, show cross for 0.5s
         cross.draw(); win.flip(); core.wait(0.5)
         return True, ""
 
@@ -121,7 +121,7 @@ def wait_for_central_fixation(win, el_tracker, screen_width, screen_height,
     return True, drift_deg
 
 
-# --------- Cedrus–response box setup (safe if pyxid2 missing) ---------
+# --------- Optional Cedrus–response box setup ---------
 try:
     import pyxid2
 except Exception:
@@ -163,7 +163,7 @@ def _cedrus_flush(dev, dur=0.12):
 
 
 def _cedrus_any_pressed(dev) -> bool:
-    """True if *any* Cedrus key press event is available (drains one batch)."""
+    """True if *any* Cedrus key press event is available."""
     if not dev:
         return False
     try:
@@ -285,11 +285,11 @@ def run_dynamic_trials(win, el_tracker, screen_width, screen_height, participant
     instruction_text = visual.TextStim(
         win,
         text=("In this task you will see 10 objects, and among them you have to find a target object.\n"
-              "The target object is tilted 45°.\n"
+              "The target object is tilted 90°.\n"
               "Press the GREEN button as soon as you see the target.\n"
               "Press the RED button, If you do not find the target.\n"
-              "Each trial you have 7 seconds to respond.\n"
-              "Between trials a cross is shown in the middle of the screen, try to focus your eyes there.\n"
+              "Try to be as accurate as possible.\n"
+              "Between trials focus your eyes to the cross shown in the middle of the screen.\n"
               "\n"
               "Press any button to start."),
         color='white', height=30, wrapWidth=screen_width * 0.8, units='pix'
@@ -347,42 +347,7 @@ def run_dynamic_trials(win, el_tracker, screen_width, screen_height, participant
         event.waitKeys(keyList=['return', 'enter'])
     _cedrus_flush(cedrus)
     event.clearEvents(eventType='keyboard')
-    
-    # (old measure_fixation_drift is still defined below if you want it, but we won't use it anymore)
-    def measure_fixation_drift(trial_idx, duration=0.5):
-        cross = visual.TextStim(win, text='+', color='black', height=40, units='pix')
-        if not el_tracker:
-            cross.draw(); win.flip(); core.wait(duration)
-            return ""
-        try:
-            el_tracker.setOfflineMode()
-            el_tracker.sendMessage(f'FIXCHECK_START {trial_idx}')
-            el_tracker.startRecording(1, 1, 1, 1)
-            core.wait(0.1)
-        except Exception:
-            cross.draw(); win.flip(); core.wait(duration)
-            return ""
-        samples = []
-        clk_fix = core.Clock()
-        while clk_fix.getTime() < duration:
-            cross.draw()
-            win.flip()
-            s = el_tracker.getNewestSample()
-            eye = s.getRightEye() if (s and s.isRightSample()) else (s.getLeftEye() if (s and s.isLeftSample()) else None)
-            if eye is not None:
-                rx, ry = eye.getGaze()
-                if (rx is not None and ry is not None and rx > -1e5 and ry > -1e5):
-                    gx = float(rx) - (screen_width / 2.0)
-                    gy = (screen_height / 2.0) - float(ry)
-                    dist_deg = np.hypot(gx, gy) / float(cell_size)
-                    samples.append(dist_deg)
-            core.wait(0.005)
-        try:
-            el_tracker.sendMessage('FIXCHECK_END')
-            el_tracker.stopRecording()
-        except Exception:
-            pass
-        return round(float(np.median(samples)), 3) if samples else ""
+
     
     with open(filename, mode='w', newline='') as file:
         writer = csv.writer(file)
@@ -397,6 +362,21 @@ def run_dynamic_trials(win, el_tracker, screen_width, screen_height, participant
             pos=(0, -int(screen_height * 0.18)), units='pix'
         )
         
+        percent_text = visual.TextStim(
+            win, text="", color='white', height=24,
+            pos=(0, -int(screen_height * 0.25)), units='pix'
+        )
+        
+        wait_text = visual.TextStim(
+            win,
+            text="Waiting for response...",
+            color="white",
+            height=32,
+            units="pix"
+        )
+
+        correct_so_far = 0
+        
         # exact 50/50 target-present schedule
         n_present = num_trials // 2
         present_schedule = [1]*n_present + [0]*(num_trials - n_present)
@@ -404,7 +384,8 @@ def run_dynamic_trials(win, el_tracker, screen_width, screen_height, participant
 
         # -------- Trials --------
         for trial in range(num_trials):
-            # NEW: wait for central fixation gate before each trial
+            
+            # wait for central fixation gate before each trial
             ok, drift_deg = wait_for_central_fixation(
                 win, el_tracker, screen_width, screen_height,
                 deg_thresh=2.499, hold_ms=200,  # you can tweak these
@@ -412,7 +393,7 @@ def run_dynamic_trials(win, el_tracker, screen_width, screen_height, participant
                 max_wait_s=None                  # None = wait indefinitely
             )
             if not ok:
-                # If you ever set max_wait_s and it times out, bail out cleanly
+                # If max_wait_s is set and it times out, bail out cleanly
                 print(f"[FIXGATE] Trial {trial+1}: timed out waiting for central fixation.")
                 return filename
 
@@ -464,6 +445,10 @@ def run_dynamic_trials(win, el_tracker, screen_width, screen_height, participant
             rt = None
             gabor_trajectory = []
             target_trajectory = []
+
+            # Don't accept responses in the first 0.5 s of the trial
+            min_rt = 0.5
+            resp_open = False
 
             el_tracker.setOfflineMode()
             el_tracker.sendCommand('clear_screen 0')
@@ -563,42 +548,113 @@ def run_dynamic_trials(win, el_tracker, screen_width, screen_height, participant
                 for g in gabors: g.draw()
                 win.flip()
 
-                choice = _cedrus_get_choice(cedrus) if cedrus else None
-                if choice is not None:
-                    response = choice
-                    rt = trial_clock.getTime()
-                    break
-                
-                keys = event.getKeys(keyList=['g','r','escape'], timeStamped=trial_clock)
-                if keys:
-                    k, t0 = keys[0]
-                    if k == 'escape':
-                        if el_tracker:
-                            el_tracker.sendMessage('stimulus_offset')
-                            el_tracker.stopRecording()
-                        return filename
-                    if k == 'g':
-                        response = 'target'; rt = t0; break
-                    if k == 'r':
-                        response = 'distractor'; rt = t0; break
+                # --- open the response window after min_rt ---
+                if (not resp_open) and (now_t >= min_rt):
+                    # Flush any accidental early presses
+                    if cedrus:
+                        _cedrus_flush(cedrus)
+                    event.clearEvents(eventType='keyboard')
+                    resp_open = True
 
-                keys = event.getKeys(keyList=['space', 'escape'], timeStamped=trial_clock)
-                if keys:
-                    k, t0 = keys[0]
-                    if k == 'escape':
-                        if el_tracker:
-                            el_tracker.sendMessage('stimulus_offset')
-                            el_tracker.stopRecording()
-                        return filename
-                    if k == 'space':
-                        response = 'space'
-                        rt = t0
+                # Only accept responses after the minimum RT (0.5s)
+                if resp_open:
+                    # Cedrus first
+                    choice = _cedrus_get_choice(cedrus) if cedrus else None
+                    if choice is not None:
+                        response = choice
+                        rt = now_t  # trial time in seconds
                         break
-                
+                    
+                    # Keyboard: g / r
+                    keys = event.getKeys(keyList=['g','r','escape'], timeStamped=trial_clock)
+                    if keys:
+                        k, t0 = keys[0]
+                        if k == 'escape':
+                            if el_tracker:
+                                el_tracker.sendMessage('stimulus_offset')
+                                el_tracker.stopRecording()
+                            return filename
+                        if k == 'g':
+                            response = 'target'; rt = t0; break
+                        if k == 'r':
+                            response = 'distractor'; rt = t0; break
+
+                    # Keyboard: space / escape (if you still want this)
+                    keys = event.getKeys(keyList=['space', 'escape'], timeStamped=trial_clock)
+                    if keys:
+                        k, t0 = keys[0]
+                        if k == 'escape':
+                            if el_tracker:
+                                el_tracker.sendMessage('stimulus_offset')
+                                el_tracker.stopRecording()
+                            return filename
+                        if k == 'space':
+                            response = 'space'
+                            rt = t0
+                            break
+
                 core.wait(movement_delay)
+
 
             el_tracker.sendMessage('stimulus_offset')
             el_tracker.stopRecording()
+            
+            # ---------------------- allow late responses ----------------------
+            if response is None:   # only if participant didn't respond during the stimulus
+                post_resp_clock = core.Clock()
+                max_post_resp   = 20.0   # seconds allowed after stimulus offset
+                dead_time_post  = 0.5   # responses during the first 0.5s ignored
+                resp_open_post  = False
+            
+                # Show waiting message
+                wait_text.draw()
+                win.flip()
+            
+                while post_resp_clock.getTime() < max_post_resp:
+                    t_now = post_resp_clock.getTime()
+            
+                    # Open the post-stimulus response window after dead_time_post
+                    if (not resp_open_post) and (t_now >= dead_time_post):
+                        # flush any early “too fast” responses
+                        if cedrus:
+                            _cedrus_flush(cedrus)
+                        event.clearEvents(eventType='keyboard')
+                        resp_open_post = True
+            
+                    # Before dead_time_post: do not accept responses
+                    if not resp_open_post:
+                        core.wait(0.01)
+                        continue
+            
+                    # --- Now responses are allowed ---
+            
+                    # Cedrus first
+                    choice = _cedrus_get_choice(cedrus) if cedrus else None
+                    if choice is not None:
+                        response = choice
+                        # RT is trial_duration + time since post window started
+                        rt = trial_duration + t_now
+                        break
+            
+                    # Keyboard fallback (g / r / escape)
+                    keys = event.getKeys(keyList=['g','r','escape'],
+                                         timeStamped=post_resp_clock)
+                    if keys:
+                        k, t0 = keys[0]
+                        if k == 'escape':
+                            return filename
+                        if k == 'g':
+                            response = 'target'
+                            rt = trial_duration + t0   # t0 is relative to post_resp_clock
+                            break
+                        if k == 'r':
+                            response = 'distractor'
+                            rt = trial_duration + t0
+                            break
+            
+                    core.wait(0.01)
+            # ------------------------------------------------------------------
+
 
             elapsed = trial_clock.getTime()
             speed_px_per_sec = dist_px / elapsed if elapsed > 0 else 0.0
@@ -615,15 +671,30 @@ def run_dynamic_trials(win, el_tracker, screen_width, screen_height, participant
                     is_correct = (response == 'distractor')
                 feedback_text = "Correct" if is_correct else "Incorrect"
             
+            if is_correct:
+                correct_so_far += 1
+
+            percent_correct = 100 * (correct_so_far / (trial + 1))
+
+            
             last_fix_on_target_time = None
             last_committed_fix_idx = None
 
             feedback = visual.TextStim(win, text=feedback_text, color="white", height=40, units='pix')
+            
             progress_text.text = f"{trial + 1}/{num_trials}"
-            feedback.draw(); progress_text.draw()
-            win.flip(); core.wait(feedback_duration)
+            percent_text.text = f"Accuracy: {percent_correct:.1f}%"
+            
+            feedback.draw()
+            progress_text.draw()
+            percent_text.draw()
+            
+            win.flip()
+            core.wait(feedback_duration)
+
             
             event.clearEvents(eventType='keyboard')
+            
             if cedrus:
                 _cedrus_flush(cedrus)
 
