@@ -10,7 +10,6 @@ Created on Thu Nov 13 12:34:21 2025
     Responses are right/left arrow on keyboard or keys 1 and 3 on Cedrus.
 
 
-    UPDATED:
     - Dynamic Gaussian noise background during stimulus (gabor/motion window).
     - Static noise during fixation/drift and during response.
     
@@ -189,7 +188,7 @@ def run_dynamic_visibility_trials(
     ]
     bank_i = 0
 
-    # 50/50 schedule
+    # 50/50 target present/absent schedule
     n_present = int(num_trials) // 2
     present_schedule = [1]*n_present + [0]*(int(num_trials) - n_present)
     random.shuffle(present_schedule)
@@ -239,9 +238,9 @@ def run_dynamic_visibility_trials(
     inst = visual.TextStim(
         win,
         text=("In this task, a single object will briefly appear on noise at different eccentricities.\n"
-              "If it is the TARGET object (45° tilt), press GREEN button.\n"
+              "If it is the TARGET object (90° tilt), press GREEN button.\n"
               "If it is a DISTRACTOR object (any other tilt), or you did not see it, press RED button.\n"
-              "Between trials a cross is shown in the middle of the screen, try to fixate it.\n\n"
+              "Between trials focus your eyes to the cross shown in the middle of the screen.\n\n"
               "Press any button to start."),
         color='white', height=30, wrapWidth=screen_width_pix * 0.85, units='pix',
         pos=(0, screen_height_pix * 0.24)
@@ -288,7 +287,7 @@ def run_dynamic_visibility_trials(
              row_y_deg - 1.8)
     )
     lab_t = visual.TextStim(
-        win, text="Target (45°)", color='white', height=0.8, units='deg',
+        win, text="Target (90°)", color='white', height=0.8, units='deg',
         pos=(tgt_x_deg, row_y_deg - 1.8)
     )
 
