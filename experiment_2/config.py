@@ -21,10 +21,13 @@ DIAGONAL_SCALE = round(4 / np.sqrt(2), 2)
 
 # ========== Task & Timing Settings ==========
 num_trials = 100
-trial_duration = 7 # 7,000ms
+trial_duration = 3.5 # 3500ms
 feedback_duration = 1
 timeout_feedback_text = "Time's up."
-transition_steps = 10 # = 320 px/s
+
+transition_steps = 10 # = <-- CHANGE THIS TO CHANGE OBJECT SPEED. 600 = 0, 27 = 100, 13 = 200, 10 = 300, 7 = 400
+
+
 movement_delay = 1.0 / 30.0 # divided with the frame rate 
 
 # ========== Stimulus Settings ==========
