@@ -26,7 +26,6 @@ timeout_feedback_text = "Time's up."
 
 transition_steps = 10 # = <-- CHANGE THIS TO CHANGE OBJECT SPEED. 600 = 0, 27 = 100, 13 = 200, 10 = 300, 7 = 400
 
-
 movement_delay = 1.0 / 30.0 # divided with the frame rate 
 
 # ========== Stimulus Settings ==========
