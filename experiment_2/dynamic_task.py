@@ -323,7 +323,7 @@ def run_dynamic_trials(win, el_tracker, screen_width, screen_height, participant
     lab_d = visual.TextStim(win, text="Distractors", color='white', height=22, units='pix',
                             pos=((start_x + (start_x + (n_d - 1) * (cell_size + gap))) / 2.0,
                                  row_y - int(0.12 * screen_height)))
-    lab_t = visual.TextStim(win, text="Target (45°)", color='white', height=22, units='pix',
+    lab_t = visual.TextStim(win, text="Target (90°)", color='white', height=22, units='pix',
                             pos=(tgt_x, tgt_y - int(0.12 * screen_height)))
 
     instruction_text.draw()
