@@ -24,7 +24,7 @@ trial_duration = 3.5 # 3500ms
 feedback_duration = 1
 timeout_feedback_text = "Time's up."
 
-transition_steps = 10 # = <-- CHANGE THIS TO CHANGE OBJECT SPEED. 600 = 0, 27 = 100, 13 = 200, 10 = 300, 7 = 400
+transition_steps = 10 # = <-- CHANGE THIS TO CHANGE OBJECT SPEED. 800 = 0 px/s, 27 = 100 px/s, 13 = 200 px/s, 10 = 300 px/s, 7 = 400 px/s
 
 movement_delay = 1.0 / 30.0 # divided with the frame rate 
 
