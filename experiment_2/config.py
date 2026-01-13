@@ -19,7 +19,7 @@ cell_size = 35
 DIAGONAL_SCALE = round(4 / np.sqrt(2), 2)
 
 # ========== Task & Timing Settings ==========
-num_trials = 100
+num_trials = 100 # <-- CHANGE THIS TO CHANGE NUMBER OF TRIALS. 10 for training set and 100 for other sets.
 trial_duration = 3.5 # 3500ms
 feedback_duration = 1
 timeout_feedback_text = "Time's up."
