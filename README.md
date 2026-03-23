@@ -2,10 +2,6 @@
 
 Set of experiments developed to study visual search in dynamic environments. 
 
-Example of a search task: 
-
-![alt text](https://github.com/herttaleinonen/Dynamic_visual_environments/blob/main/experiment_1/results/video.gif)
-
 # Running the experiment
 
 Requirements:
