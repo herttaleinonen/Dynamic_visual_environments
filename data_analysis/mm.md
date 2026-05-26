@@ -14,16 +14,10 @@ library(broom.mixed)
 library(moments)  
 library(patchwork)
 
-# ============================================================
 # Load data
-# ============================================================
-
 dat <- read_csv("data/long.csv", show_col_types = FALSE)
 
-# ============================================================
-# Speed mapping
-# ============================================================
-
+# Velocity mapping
 speed_map <- tibble(
   task      = paste0("dt", 1:5),
   speed_num = c(0.000, 2.703, 5.406, 8.109, 10.812),
@@ -33,10 +27,7 @@ speed_map <- tibble(
 speed_breaks <- speed_map$speed_num
 speed_labels <- speed_map$speed_lab
 
-# ============================================================
 # DT tasks + factors
-# ============================================================
-
 dt <- dat %>%
   filter(task %in% paste0("dt", 1:5)) %>%
   left_join(speed_map, by = "task") %>%
@@ -51,10 +42,7 @@ dt <- dat %>%
 # (vs contr.sum which gives difference/2)
 contrasts(dt$target_present) <- c(-0.5, 0.5)
 
-# ============================================================
 # RT DISTRIBUTION DIAGNOSTICS
-# ============================================================
-
 rt_raw <- dt %>% filter(correct == 1, !is.na(rt_s))
 
 cat("\n=== RT descriptives ===\n")
@@ -108,10 +96,7 @@ print(p_qq_log)
 dev.off()
 cat("RT distribution diagnostics saved to diagnostics_rt_distribution.pdf\n")
 
-# ============================================================
 # Aggregate data
-# ============================================================
-
 dt_rt <- dt %>%
   filter(correct == 1) %>%
   group_by(participant, speed_num, speed_fac, target_present) %>%
@@ -183,7 +168,7 @@ fit_lmm_slopes <- function(formula_str, data) {
   lmer(as.formula(formula_fallback), data = data, REML = FALSE)
 }
 
-# ------ RT: log-transformed (chosen based on AIC and residual diagnostics) ------
+# RT: log-transformed (chosen based on AIC and residual diagnostics) 
 m_rt_log <- fit_lmm_slopes(
   "log_rt ~ speed_num * target_present + (1 + speed_num + target_present | participant)",
   dt_rt
@@ -202,13 +187,13 @@ cat(sprintf("Log RT LMM:   AIC = %.1f\n", AIC(m_rt_log)))
 # Final RT model
 m_rt <- m_rt_log
 
-# ------ Accuracy: logit LMM with random slopes ------
+# Accuracy: logit LMM with random slopes 
 m_acc <- fit_lmm_slopes(
   "logit_acc ~ speed_num * target_present + (1 + speed_num + target_present | participant)",
   dt_acc
 )
 
-# ------ Eye movement models with random slopes ------
+# Eye movement models with random slopes 
 m_fix  <- fit_lmm_slopes(
   "fix_count ~ speed_num * target_present + (1 + speed_num + target_present | participant)",
   dt_eye
@@ -226,10 +211,7 @@ m_ctr <- fit_lmm_slopes(
   dt_eye
 )
 
-# ============================================================
 # RESIDUAL DIAGNOSTICS
-# ============================================================
-
 check_residuals <- function(model, label) {
   res <- residuals(model)
   fit <- fitted(model)
@@ -264,10 +246,7 @@ check_residuals(m_ctr,  "Centre distance")
 dev.off()
 cat("Residual diagnostics saved to diagnostics_residuals.pdf\n")
 
-# ============================================================
 # Plotting settings
-# ============================================================
-
 COND_COLORS <- c(
   "absent"  = "#d62728",
   "present" = "#1f77b4"
@@ -342,12 +321,8 @@ plot_spaghetti_with_lmm <- function(df, dv_name, model, ylab,
   p
 }
 
-# ============================================================
 # Generate plots
-# ============================================================
-
-# --- RT (a) and Accuracy (b) ---
-
+# RT (a) and Accuracy (b) 
 p_rt_spag <- ggplot(dt_rt, aes(x = speed_num, y = rt, color = target_present)) +
   geom_line(aes(group = interaction(participant, target_present)),
             alpha = 0.10, linewidth = 0.5) +
@@ -419,8 +394,7 @@ p_acc_spag <- ggplot(dt_acc, aes(x = speed_num, y = acc, color = target_present)
   labs(x = "Velocity (deg/s)", y = "Accuracy", color = "Target", tag = "b.") +
   journal_theme
 
-# --- Eye movement panels (a-d) ---
-
+# Eye movement plots (a-d) 
 p_fix_spag <- plot_spaghetti_with_lmm(
   dt_eye, "fix_count", m_fix, "Fixation count",
   speed_breaks = speed_breaks, speed_labels = speed_labels,
@@ -475,10 +449,7 @@ ggsave("figure6.tiff", fig6, width = 14, height = 10, dpi = 300)
 
 cat("\nFigures saved as PDF and TIFF.\n")
 
-# ============================================================
 # Results tables and F-tests
-# ============================================================
-
 models <- list(
   "Reaction time (log s)" = m_rt,
   "Accuracy (logit)"      = m_acc,
@@ -502,10 +473,7 @@ results_table <- bind_rows(
 write.csv(results_table, "results_table.csv", row.names = FALSE)
 print(results_table)
 
-# ============================================================
 # F-TESTS (lmerTest, Type III Satterthwaite)
-# ============================================================
-
 cat("\n=== F-TESTS (lmerTest anova, Satterthwaite) ===\n")
 
 f_test_results <- lapply(names(models), function(nm) {
@@ -521,12 +489,8 @@ f_table <- bind_rows(f_test_results)
 write.csv(f_table, "f_tests.csv", row.names = FALSE)
 cat("\nF-tests written to f_tests.csv\n")
 
-# ============================================================
 # POST-HOC: velocity slopes separately for absent and present
-# Use emtrends() when the velocity x target_present interaction
-# is significant
-# ============================================================
-
+# Use emtrends() when the velocity x target_present interaction is significant
 cat("\n=== VELOCITY SLOPES BY TARGET PRESENCE (emtrends) ===\n")
 
 get_emtrends <- function(model, data, label) {
