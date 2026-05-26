@@ -107,8 +107,8 @@ def preprocess_participant_trials(
 ) -> List[dict]:
     """
     Returns a list of dicts, each containing everything needed to simulate a trial.
-    This is the expensive part (ASC parsing, gaze reconstruction, literal_eval of positions)
-    and should be done ONCE per participant.
+    Preprocessing (ASC parsing, gaze reconstruction, literal_eval of positions)
+    is done once per participant to save time in computation.
     """
     trials_out: List[dict] = []
 
@@ -330,8 +330,7 @@ def fit_model_per_participant(
     
     """
     Fits (eta, theta) per participant using a two-pass grid search (coarse + refine),
-    with a stable 70/30 train/test split per participant for cross valucation.
-
+    with a stable 70/30 train/test split per participant for cross validation.
     """
 
     # -----------------------------------------
