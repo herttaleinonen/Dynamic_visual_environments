@@ -29,9 +29,9 @@ GLOBAL_TND_S = 0.50 # non-decision time
 MODEL_SAMPLING_RATE = 0.05 # 0.05 = fixed-sampling-rate model; None = object-displacement-based discretization model
 
 
-# =========================
+# -------------------------
 # Null model switches:
-# =========================
+# -------------------------
 
 GAZE_MODE = "real" # change to "random"/"shuffle_time"/"center"/"corner_tl"/"shift_time"/"random_from_real_hist" for null model runs, 
                    # keep      "real" for normal model run
