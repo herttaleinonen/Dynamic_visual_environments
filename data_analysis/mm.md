@@ -161,9 +161,6 @@ dt_eye <- dt %>%
 #
 # Fallback if convergence fails:
 #   (1 + speed_num || participant)   — removes random effect correlations
-#
-# We try the full model first; if it warns about convergence,
-# fall back to the simpler version.
 # ============================================================
 
 fit_lmm_slopes <- function(formula_str, data) {
