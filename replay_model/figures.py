@@ -16,9 +16,7 @@ import statsmodels.api as sm
 import statsmodels.formula.api as smf
 import math
 
-# ------------------------------------------------------------------
-# Journal-compliant style
-# ------------------------------------------------------------------
+# Journal-style for plots
 class R:
     BASE_SIZE    = 18
     FONT_FAMILY  = "Helvetica"
@@ -255,9 +253,9 @@ rt_group_ta  = rt_groupify(rt_pp_ta)
 
 ensure_outdir(OUTDIR)
 
-# =============================================================
+# -----------------------
 # SINGLE-PANEL PLOTS
-# =============================================================
+# -----------------------
 apply_r_style()
 
 for rt_group, tag, panel_label in [
@@ -298,9 +296,9 @@ fig.savefig(f"{OUTDIR}/dprime_vs_speed.pdf", format="pdf")
 plt.close()
 print(" - dprime_vs_speed.png")
 
-# =============================================================
+# -----------------------
 # MOSAIC PLOTS
-# =============================================================
+# -----------------------
 mosaic_style()
 
 def pivot_wide(pp_df, value_col):
@@ -435,9 +433,9 @@ acc_group.to_csv(f"{OUTDIR}/summary_accuracy_vs_speed.csv", index=False)
 dprime_group.to_csv(f"{OUTDIR}/summary_dprime_vs_speed.csv", index=False)
 print("Wrote figures to:", OUTDIR)
 
-# =============================================================
+# -----------------------
 # SACCADE TIMING ANALYSIS
-# =============================================================
+# -----------------------
 apply_r_style()
 
 df = pd.read_csv("saccade_prediction_table_test.csv")
