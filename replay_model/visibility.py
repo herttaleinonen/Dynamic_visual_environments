@@ -15,15 +15,13 @@ from scipy.interpolate import UnivariateSpline
 from config import VT_TO_SPEED
 from parsing_and_gaze import vt_from_name
 
-
-# =========================
+# -------------------------
 # Visibility -> d'(400ms)
-# =========================
+# -------------------------
 def rates_to_dprime(hit, fa, eps=1e-4):
     H = np.clip(hit, eps, 1 - eps)
     F = np.clip(fa, eps, 1 - eps)
     return norm.ppf(H) - norm.ppf(F)
-
 
 def compute_dprime_from_group(group: pd.DataFrame) -> pd.Series:
     """
@@ -47,7 +45,6 @@ def compute_dprime_from_group(group: pd.DataFrame) -> pd.Series:
     dprime = float(norm.ppf(H) - norm.ppf(F))
 
     return pd.Series({"dprime": dprime, "H": H, "F": F, "nT": nT, "nD": nD})
-
 
 def build_dprime_splines_for_participant(
     visibility_files: List[str],
@@ -102,9 +99,9 @@ def build_dprime_splines_for_participant(
     return splines
 
 
-# =========================
+# -------------------------
 # Visibility null-models
-# =========================
+# -------------------------
 def constant_dprime_fn(c: float):
     """
     Returns a callable that behaves like a spline but always returns
@@ -117,7 +114,6 @@ def constant_dprime_fn(c: float):
         return np.full_like(ecc, c, dtype=float)
 
     return f
-
 
 def make_visibility_null_model(
     dprime_models_pp: Dict[int, callable],
