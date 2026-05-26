@@ -12,14 +12,10 @@ library(dplyr)
 library(ggplot2)
 library(patchwork)
 
-# ------------------------------------------------------------
-# 1) Load data
-# ------------------------------------------------------------
+# Load data
 dat <- read_csv("data/long.csv", show_col_types = FALSE)
 
-# ------------------------------------------------------------
-# 2) Keep visibility tasks and map velocity
-# ------------------------------------------------------------
+# Keep visibility tasks and map velocity
 vt <- dat %>%
   filter(task %in% paste0("vt", 1:5)) %>%
   mutate(
@@ -40,9 +36,7 @@ vt <- dat %>%
   ) %>%
   filter(!is.na(speed), !is.na(correct), !is.na(ecc_deg))
 
-# ------------------------------------------------------------
-# 3) Participant-level accuracy
-# ------------------------------------------------------------
+# Participant-level accuracy
 vt_participant <- vt %>%
   group_by(participant, speed, speed_lab, ecc_deg) %>%
   summarise(
@@ -50,9 +44,7 @@ vt_participant <- vt %>%
     .groups = "drop"
   )
 
-# ------------------------------------------------------------
-# 4) Group mean + SEM
-# ------------------------------------------------------------
+# Group mean + SEM
 vt_summary <- vt_participant %>%
   group_by(speed_lab, ecc_deg) %>%
   summarise(
@@ -61,10 +53,7 @@ vt_summary <- vt_participant %>%
     .groups  = "drop"
   )
 
-# ------------------------------------------------------------
 # Plotting settings 
-# ------------------------------------------------------------
-
 journal_theme <- theme_minimal(base_size = 22, base_family = "Helvetica") +
   theme(
     panel.grid.major.x = element_blank(),
@@ -80,9 +69,7 @@ journal_theme <- theme_minimal(base_size = 22, base_family = "Helvetica") +
     plot.margin         = margin(6, 8, 6, 6)
   )
 
-# ------------------------------------------------------------
-# 6) Plot
-# ------------------------------------------------------------
+# Create plots
 p_visibility <- ggplot(
   vt_summary,
   aes(x = ecc_deg, y = mean_acc, color = speed_lab, group = speed_lab)
@@ -144,9 +131,7 @@ p_16deg <- ggplot(vt_16_summary,
 
 print(p_16deg)
 
-# ------------------------------------------------------------
-# 9) Save figures
-# ------------------------------------------------------------
+# Save figures
 ggsave("visibility_functions_by_speed.pdf", p_visibility,
        width = 7, height = 5, device = cairo_pdf)
 ggsave("visibility_functions_by_speed.eps", p_visibility,
