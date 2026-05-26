@@ -8,7 +8,6 @@ Created on Tue Apr  7 23:46:29 2026
 
 import os
 from typing import Dict, Optional, Tuple
-
 import numpy as np
 import pandas as pd
 from scipy.interpolate import UnivariateSpline
@@ -57,7 +56,6 @@ def ecc_deg_from_cells(obj_xy_cells_t: np.ndarray, gaze_xy_cells_t: np.ndarray) 
     ecc_cells = np.linalg.norm(obj_xy_cells_t - gaze_xy_cells_t[None, :], axis=1)
     return ecc_cells * DEG_PER_CELL
 
-
 def min_target_eccentricity(obj_xy_cells, gaze_xy_cells, target_index):
     """Return minimum eccentricity (deg) between gaze and target over trial."""
     if target_index is None:
@@ -76,7 +74,6 @@ def min_target_eccentricity(obj_xy_cells, gaze_xy_cells, target_index):
             dmin = ecc
 
     return float(dmin) if np.isfinite(dmin) else np.nan
-
 
 def time_to_first_vis_d400(
     obj_xy_cells: np.ndarray,
@@ -105,7 +102,6 @@ def time_to_first_vis_d400(
             return float((t + 1) * dt_s)  # matches t_sec convention
     return np.nan
 
-
 def infer_target_index(gabor_pos: np.ndarray, target_traj: np.ndarray) -> int:
     """
     gabor_pos:    [T, N, 2] positions in grid coords
@@ -123,9 +119,9 @@ def infer_target_index(gabor_pos: np.ndarray, target_traj: np.ndarray) -> int:
     return int(np.argmin(dists))
 
 
-# =========================
+# ------------------
 # The main update loop for a single trial
-# =========================
+# ------------------
 def run_replay_trial(
     obj_xy_cells: np.ndarray,
     gaze_xy_cells: np.ndarray,
@@ -201,9 +197,9 @@ def run_replay_trial(
     return resp, T_use * dt_eff
 
 
-# =========================
+# ------------------
 # Update loop for saccade prediction 
-# =========================
+# ------------------
 def replay_trace_trial(
     obj_xy_cells: np.ndarray,
     gaze_xy_cells: np.ndarray,
@@ -493,9 +489,9 @@ def build_saccade_prediction_table(
     return out
 
 
-# =========================
+# -------------------------------
 # Run everything + build final CSV
-# =========================
+# -------------------------------
 def run_full_replay(
     search_dir: str,
     visibility_dir: str,
