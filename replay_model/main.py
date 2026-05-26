@@ -14,9 +14,6 @@ from replay import (run_full_replay, build_saccade_prediction_table)
 from fitting import (fit_model_per_participant,run_model_recovery)
 
 
-# =========================
-# Main
-# =========================
 if __name__ == "__main__":
     SEARCH_DIR = "data/search"
     VIS_DIR = "data/visibility"
