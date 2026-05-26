@@ -18,7 +18,7 @@ library(patchwork)
 dat <- read_csv("data/long.csv", show_col_types = FALSE)
 
 # ------------------------------------------------------------
-# 2) Keep visibility tasks and define speed
+# 2) Keep visibility tasks and map velocity
 # ------------------------------------------------------------
 vt <- dat %>%
   filter(task %in% paste0("vt", 1:5)) %>%
@@ -62,7 +62,7 @@ vt_summary <- vt_participant %>%
   )
 
 # ------------------------------------------------------------
-# 5) Journal-compliant theme 
+# Plotting settings 
 # ------------------------------------------------------------
 
 journal_theme <- theme_minimal(base_size = 22, base_family = "Helvetica") +
@@ -107,10 +107,7 @@ p_visibility <- ggplot(
 
 print(p_visibility)
 
-# ------------------------------------------------------------
-# 8) Plot: accuracy vs speed at 16° eccentricity
-# Shows the inverted-U relationship
-# ------------------------------------------------------------
+# Plot accuracy vs speed at 16° eccentricity, shows the inverted-U relationship
 vt_16 <- vt_participant %>%
   filter(ecc_deg == 16)
 
