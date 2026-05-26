@@ -1,5 +1,4 @@
 # Created on Mon Mar 3 11:03:05 2026
-
 # @author: herttaleinonen
 
 # ============================================================
@@ -11,18 +10,15 @@
 # Random effect: participant
 # ============================================================
 
-# 0) Packages
-install.packages(c("readr", "dplyr", "ggplot2", "nlme"))
-
 library(readr)
 library(dplyr)
 library(ggplot2)
 library(nlme)
 
-# 1) Load data
+# Load data
 dat <- read_csv("data/long.csv", show_col_types = FALSE)
 
-# 2) Keep visibility tasks and define speed
+# Keep visibility tasks and map velocity
 vt <- dat %>%
   filter(task %in% paste0("vt", 1:5)) %>%
   mutate(
@@ -40,8 +36,8 @@ vt <- dat %>%
   ) %>%
   filter(!is.na(speed), !is.na(correct), !is.na(ecc_deg))
 
-# 3) Aggregate to participant-level proportions
-#    (accuracy per participant × speed × eccentricity)
+# Aggregate to participant-level proportions
+# (accuracy per participant × speed × eccentricity)
 vt_participant <- vt %>%
   group_by(participant, speed, ecc_deg) %>%
   summarise(
@@ -53,7 +49,7 @@ vt_participant <- vt %>%
 print(vt_participant)
 
 # ------------------------------------------------------------
-# 4) Nonlinear mixed model
+# Nonlinear mixed model
 #
 # Logistic visibility function:
 #   acc = 1 / (1 + exp(-(a + b*ecc_deg + c*speed + d*ecc_deg*speed)))
@@ -96,10 +92,10 @@ cat("====================================================\n\n")
 
 print(summary(vis_nlme))
 
-# 5) Predicted values for observed data
+# Predicted values for observed data
 vt_participant$pred <- predict(vis_nlme)
 
-# 6) Create smooth prediction grid for plotting
+# Create smooth prediction grid for plotting
 pred_grid <- expand.grid(
   ecc_deg = seq(min(vt_participant$ecc_deg, na.rm = TRUE),
                 max(vt_participant$ecc_deg, na.rm = TRUE),
@@ -109,7 +105,7 @@ pred_grid <- expand.grid(
 
 pred_grid$pred <- predict(vis_nlme, newdata = pred_grid, level = 0)
 
-# 7) Group summary for observed means ± SEM
+# Group summary for observed means ± SEM
 vt_summary <- vt_participant %>%
   group_by(speed, ecc_deg) %>%
   summarise(
@@ -122,7 +118,7 @@ vt_summary <- vt_participant %>%
 pred_grid <- pred_grid %>%
   mutate(speed = factor(speed, levels = c(0, 3, 6, 8, 11)))
 
-# 8) Plot observed means + SEM + nonlinear fitted curves
+# Plot observed means + SEM + nonlinear fitted curves
 p_vis_nlme <- ggplot() +
   geom_errorbar(
     data = vt_summary,
@@ -161,7 +157,7 @@ p_vis_nlme <- ggplot() +
 
 print(p_vis_nlme)
 
-# 9) Save plot
+# Save plot
 ggsave(
   filename = "visibility_nonlinear_mixed_model.png",
   plot = p_vis_nlme,
@@ -170,14 +166,14 @@ ggsave(
   dpi = 300
 )
 
-# 10) Extract fixed effects 
+# Extract fixed effects 
 cat("\n--- Fixed effects estimates ---\n")
 print(fixed.effects(vis_nlme))
 
 cat("\n--- Random effects ---\n")
 print(ranef(vis_nlme))
 
-# 11) Compare to reduced model without interaction
+# Compare to reduced model without interaction
 vis_nlme_no_int <- nlme(
   acc ~ 1 / (1 + exp(-(a + b * ecc_deg + c * speed))),
   data = vt_participant,
