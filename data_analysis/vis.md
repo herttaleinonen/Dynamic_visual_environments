@@ -64,15 +64,16 @@ vt_summary <- vt_participant %>%
 # ------------------------------------------------------------
 # 5) Journal-compliant theme 
 # ------------------------------------------------------------
-journal_theme <- theme_minimal(base_size = 18, base_family = "Helvetica") +
+
+journal_theme <- theme_minimal(base_size = 22, base_family = "Helvetica") +
   theme(
     panel.grid.major.x = element_blank(),
     panel.grid.minor    = element_blank(),
-    axis.text           = element_text(size = 14, face = "plain", family = "Helvetica"),
-    axis.title          = element_text(size = 18, face = "plain", family = "Helvetica"),
-    legend.text         = element_text(size = 14, face = "plain", family = "Helvetica"),
-    legend.title        = element_text(size = 14, face = "plain", family = "Helvetica"),
-    plot.tag            = element_text(size = 24, face = "plain", family = "Helvetica"),
+    axis.text           = element_text(size = 18, face = "plain", family = "Helvetica"),
+    axis.title          = element_text(size = 22, face = "plain", family = "Helvetica"),
+    legend.text         = element_text(size = 18, face = "plain", family = "Helvetica"),
+    legend.title        = element_text(size = 18, face = "plain", family = "Helvetica"),
+    plot.tag            = element_text(size = 28, face = "plain", family = "Helvetica"),
     axis.ticks          = element_line(color = "#333333"),
     axis.ticks.length   = unit(3, "pt"),
     axis.line           = element_line(color = "#333333", linewidth = 0.5),
