@@ -12,6 +12,7 @@ library(car)
 library(performance)
 library(broom.mixed)
 library(moments)  
+library(patchwork)
 
 # ============================================================
 # Load data
@@ -98,10 +99,14 @@ p_qq_log <- ggplot(rt_raw, aes(sample = log(rt_s))) +
   labs(title = "Q-Q plot: log(RT)") +
   theme_minimal(base_size = 14)
 
+# Save RT distribution diagnostics to PDF
+pdf("diagnostics_rt_distribution.pdf", width = 10, height = 8)
 print(p_hist_raw)
 print(p_hist_log)
 print(p_qq_raw)
 print(p_qq_log)
+dev.off()
+cat("RT distribution diagnostics saved to diagnostics_rt_distribution.pdf\n")
 
 # ============================================================
 # Aggregate data
@@ -129,16 +134,7 @@ cat(sprintf("\nAccuracy continuity correction eps = %.4f (based on median %d tri
 
 dt_acc <- dt %>%
   group_by(participant, speed_num, speed_fac, target_present) %>%
-  summarise(
-    acc = mean(correct, na.rm = TRUE),
-    n_trials = sum(!is.na(correct)),   # track valid data
-    .groups = "drop"
-  ) %>%
-  filter(
-    n_trials > 0,                     # remove empty cells
-    !is.na(target_present),           # remove NA condition
-    is.finite(acc)                    # remove NaN
-  ) %>%
+  summarise(acc = mean(correct, na.rm = TRUE), .groups = "drop") %>%
   mutate(
     acc_clipped = pmin(acc, 1 - eps),
     logit_acc   = log(acc_clipped / (1 - acc_clipped))
@@ -166,8 +162,8 @@ dt_eye <- dt %>%
 # Fallback if convergence fails:
 #   (1 + speed_num || participant)   — removes random effect correlations
 #
-# Try the full model first; if it warns about convergence,
-# fall back to the simpler version
+# We try the full model first; if it warns about convergence,
+# fall back to the simpler version.
 # ============================================================
 
 fit_lmm_slopes <- function(formula_str, data) {
@@ -261,15 +257,19 @@ check_residuals <- function(model, label) {
 }
 
 cat("\n=== RESIDUAL DIAGNOSTICS ===\n")
+pdf("diagnostics_residuals.pdf", width = 10, height = 5)
 check_residuals(m_rt,   "RT log LMM")
 check_residuals(m_acc,  "Accuracy logit LMM")
 check_residuals(m_fix,  "Fixation count")
 check_residuals(m_scan, "Scanpath length")
 check_residuals(m_disp, "Dispersion")
 check_residuals(m_ctr,  "Centre distance")
+dev.off()
+cat("Residual diagnostics saved to diagnostics_residuals.pdf\n")
 
 # ============================================================
-# Colors + plotting function
+# ============================================================
+# Colors + journal-compliant theme
 # ============================================================
 
 COND_COLORS <- c(
@@ -277,12 +277,35 @@ COND_COLORS <- c(
   "present" = "#1f77b4"
 )
 
+# Journal guidelines:
+# - Helvetica font
+# - 10pt axis numbers, 12pt axis labels
+# - No bold
+# - Axis lines and ticks
+# - Minimal padding
+journal_theme <- theme_minimal(base_size = 22, base_family = "Helvetica") +
+  theme(
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor    = element_blank(),
+    axis.text           = element_text(size = 18, face = "plain", family = "Helvetica"),
+    axis.title          = element_text(size = 22, face = "plain", family = "Helvetica"),
+    legend.text         = element_text(size = 18, face = "plain", family = "Helvetica"),
+    legend.title        = element_text(size = 18, face = "plain", family = "Helvetica"),
+    plot.tag            = element_text(size = 28, face = "plain", family = "Helvetica"),
+    axis.ticks          = element_line(color = "#333333"),
+    axis.ticks.length   = unit(3, "pt"),
+    axis.line           = element_line(color = "#333333", linewidth = 0.5),
+    plot.margin         = margin(6, 8, 6, 6)
+  )
+
 plot_spaghetti_with_lmm <- function(df, dv_name, model, ylab,
                                     speed_var    = "speed_num",
                                     group_var    = "participant",
                                     cond_var     = "target_present",
                                     speed_breaks,
-                                    speed_labels) {
+                                    speed_labels,
+                                    show_x_label = TRUE,
+                                    show_legend  = TRUE) {
 
   df <- df %>% filter(!is.na(.data[[cond_var]]))
 
@@ -305,7 +328,9 @@ plot_spaghetti_with_lmm <- function(df, dv_name, model, ylab,
   names(pred_grid)[names(pred_grid) == "speed_num"]      <- speed_var
   names(pred_grid)[names(pred_grid) == "target_present"] <- cond_var
 
-  ggplot(df, aes(x = .data[[speed_var]], y = .data[[dv_name]],
+  x_label <- if (show_x_label) "Velocity (deg/s)" else NULL
+
+  p <- ggplot(df, aes(x = .data[[speed_var]], y = .data[[dv_name]],
                  color = .data[[cond_var]])) +
     geom_line(aes(group = interaction(.data[[group_var]], .data[[cond_var]])),
               alpha = 0.10, linewidth = 0.5) +
@@ -320,25 +345,55 @@ plot_spaghetti_with_lmm <- function(df, dv_name, model, ylab,
               linewidth = 1.4) +
     scale_color_manual(values = COND_COLORS, na.translate = FALSE) +
     scale_x_continuous(breaks = speed_breaks, labels = speed_labels) +
-    labs(x = "Velocity (deg/s)", y = ylab, color = "Target") +
-    theme_minimal(base_size = 18) +
-    theme(
-      panel.grid.major.x = element_blank(),
-      panel.grid.minor    = element_blank(),
-      plot.tag            = element_text(size = 24, face = "bold")
-    )
+    labs(x = x_label, y = ylab, color = "Target") +
+    journal_theme
+
+  if (!show_legend) p <- p + theme(legend.position = "none")
+  p
 }
 
 # ============================================================
 # Generate plots
 # ============================================================
 
-p_rt_spag <- plot_spaghetti_with_lmm(
-  dt_rt, "log_rt", m_rt, "log RT (s)",
-  speed_breaks = speed_breaks, speed_labels = speed_labels
-) + labs(tag = "a.")
+# --- Figure 5: RT (a) and Accuracy (b) ---
 
-# Accuracy: separate plot with back-transformed LMM line
+p_rt_spag <- ggplot(dt_rt, aes(x = speed_num, y = rt, color = target_present)) +
+  geom_line(aes(group = interaction(participant, target_present)),
+            alpha = 0.10, linewidth = 0.5) +
+  geom_errorbar(
+    data = dt_rt %>%
+      group_by(speed_num, target_present) %>%
+      summarise(mean = mean(rt, na.rm = TRUE),
+                sd   = sd(rt,   na.rm = TRUE),
+                n    = n(), .groups = "drop") %>%
+      mutate(se = sd / sqrt(n), ci = qt(0.975, df = n - 1) * se),
+    inherit.aes = FALSE,
+    aes(x = speed_num, ymin = mean - ci, ymax = mean + ci, color = target_present),
+    width = 0.25, linewidth = 0.8
+  ) +
+  geom_point(
+    data = dt_rt %>%
+      group_by(speed_num, target_present) %>%
+      summarise(mean = mean(rt, na.rm = TRUE), .groups = "drop"),
+    inherit.aes = FALSE,
+    aes(x = speed_num, y = mean, color = target_present), size = 2.8
+  ) +
+  geom_line(
+    data = {
+      pg <- expand.grid(speed_num      = speed_breaks,
+                        target_present = levels(dt_rt$target_present))
+      pg$pred <- exp(predict(m_rt, newdata = pg, re.form = NA))
+      pg
+    },
+    aes(x = speed_num, y = pred, color = target_present, group = target_present),
+    linewidth = 1.4
+  ) +
+  scale_color_manual(values = COND_COLORS, na.translate = FALSE) +
+  scale_x_continuous(breaks = speed_breaks, labels = speed_labels) +
+  labs(x = "Velocity (deg/s)", y = "Reaction time (s)", color = "Target", tag = "a.") +
+  journal_theme
+
 pred_grid_acc <- expand.grid(
   speed_num      = speed_breaks,
   target_present = levels(dt_acc$target_present)
@@ -351,14 +406,10 @@ means_acc <- dt_acc %>%
   summarise(
     mean = mean(acc, na.rm = TRUE),
     sd   = sd(acc,   na.rm = TRUE),
-    n    = sum(!is.na(acc)),
+    n    = n(),
     .groups = "drop"
   ) %>%
-  filter(n > 1) %>%   # remove problematic groups entirely
-  mutate(
-    se = sd / sqrt(n),
-    ci = qt(0.975, df = n - 1) * se
-  )
+  mutate(se = sd / sqrt(n), ci = qt(0.975, df = n - 1) * se)
 
 p_acc_spag <- ggplot(dt_acc, aes(x = speed_num, y = acc, color = target_present)) +
   geom_line(aes(group = interaction(participant, target_present)),
@@ -376,64 +427,160 @@ p_acc_spag <- ggplot(dt_acc, aes(x = speed_num, y = acc, color = target_present)
   scale_color_manual(values = COND_COLORS, na.translate = FALSE) +
   scale_x_continuous(breaks = speed_breaks, labels = speed_labels) +
   labs(x = "Velocity (deg/s)", y = "Accuracy", color = "Target", tag = "b.") +
-  theme_minimal(base_size = 18) +
-  theme(
-    panel.grid.major.x = element_blank(),
-    panel.grid.minor    = element_blank(),
-    plot.tag            = element_text(size = 24, face = "bold")
-  )
+  journal_theme
+
+# --- Figure 6: Eye movement panels (a-d) ---
+# All panels keep their legend data; patchwork collects into one shared legend
+# x-axis label only on bottom panels
 
 p_fix_spag <- plot_spaghetti_with_lmm(
   dt_eye, "fix_count", m_fix, "Fixation count",
-  speed_breaks = speed_breaks, speed_labels = speed_labels
+  speed_breaks = speed_breaks, speed_labels = speed_labels,
+  show_x_label = FALSE, show_legend = TRUE
 ) + labs(tag = "a.")
 
 p_scan_spag <- plot_spaghetti_with_lmm(
   dt_eye, "scanpath", m_scan, "Scanpath length (deg)",
-  speed_breaks = speed_breaks, speed_labels = speed_labels
+  speed_breaks = speed_breaks, speed_labels = speed_labels,
+  show_x_label = FALSE, show_legend = TRUE
 ) + labs(tag = "b.")
 
 p_disp_spag <- plot_spaghetti_with_lmm(
-  dt_eye, "dispersion", m_disp, "Dispersion (deg²)",
-  speed_breaks = speed_breaks, speed_labels = speed_labels
+  dt_eye, "dispersion", m_disp, "Dispersion (deg\u00b2)",
+  speed_breaks = speed_breaks, speed_labels = speed_labels,
+  show_x_label = TRUE, show_legend = TRUE
 ) + labs(tag = "c.")
 
 p_ctr_spag <- plot_spaghetti_with_lmm(
   dt_eye, "center_dist", m_ctr, "Distance from centre (deg)",
-  speed_breaks = speed_breaks, speed_labels = speed_labels
+  speed_breaks = speed_breaks, speed_labels = speed_labels,
+  show_x_label = TRUE, show_legend = TRUE
 ) + labs(tag = "d.")
 
+# Print individual panels to PDF for inspection
+pdf("figures_preview.pdf", width = 7, height = 5)
 print(p_rt_spag)
 print(p_acc_spag)
 print(p_fix_spag)
 print(p_scan_spag)
 print(p_disp_spag)
 print(p_ctr_spag)
+dev.off()
+cat("Individual panel previews saved to figures_preview.pdf\n")
 
-library(broom.mixed)
+# Assemble and print combined figures
+fig5 <- p_rt_spag + p_acc_spag +
+  plot_layout(ncol = 2, guides = "collect")
+print(fig5)
+
+fig6 <- (p_fix_spag | p_scan_spag) / (p_disp_spag | p_ctr_spag) +
+  plot_layout(guides = "collect") &
+  theme(legend.position = "bottom")
+print(fig6)
+
+# Save as PDF (vector, for journal) and TIFF (for Word)
+ggsave("figure5.pdf",  fig5, width = 14, height = 5,  device = cairo_pdf)
+ggsave("figure5.tiff", fig5, width = 14, height = 5,  dpi = 300)
+
+ggsave("figure6.pdf",  fig6, width = 14, height = 10, device = cairo_pdf)
+ggsave("figure6.tiff", fig6, width = 14, height = 10, dpi = 300)
+
+cat("\nFigures saved as PDF and EPS.\n")
+
+# ============================================================
+# Results tables and F-tests
+# ============================================================
 
 models <- list(
   "Reaction time (log s)" = m_rt,
   "Accuracy (logit)"      = m_acc,
   "Fixation count"        = m_fix,
   "Scanpath length (deg)" = m_scan,
-  "Dispersion (deg²)"     = m_disp,
+  "Dispersion (deg2)"     = m_disp,
   "Centre distance (deg)" = m_ctr
 )
 
+# Beta coefficients table
 results_table <- bind_rows(
   lapply(names(models), function(nm) {
     tidy(models[[nm]], effects = "fixed") %>%
       mutate(outcome = nm) %>%
       select(outcome, term, estimate, std.error, statistic, p.value)
   })
-)
-
-# Round for reporting
-results_table <- results_table %>%
+) %>%
   mutate(across(c(estimate, std.error, statistic), ~ round(., 3)),
          p.value = ifelse(p.value < .001, "< .001", as.character(round(p.value, 3))))
 
 write.csv(results_table, "results_table.csv", row.names = FALSE)
 print(results_table)
+
+# ============================================================
+# F-TESTS (lmerTest, Type III Satterthwaite)
+# ============================================================
+
+cat("\n=== F-TESTS (lmerTest anova, Satterthwaite) ===\n")
+
+f_test_results <- lapply(names(models), function(nm) {
+  cat(sprintf("\n--- %s ---\n", nm))
+  ft <- anova(models[[nm]])
+  print(ft)
+  as.data.frame(ft) %>%
+    mutate(outcome = nm, term = rownames(.)) %>%
+    select(outcome, term, everything())
+})
+
+f_table <- bind_rows(f_test_results)
+write.csv(f_table, "f_tests.csv", row.names = FALSE)
+cat("\nF-tests written to f_tests.csv\n")
+
+# ============================================================
+# POST-HOC: velocity slopes separately for absent and present
+# Use emtrends() when the velocity x target_present interaction
+# is significant, to report velocity effects per condition
+# rather than a single pooled coefficient.
+# ============================================================
+
+cat("\n=== VELOCITY SLOPES BY TARGET PRESENCE (emtrends) ===\n")
+
+get_emtrends <- function(model, data, label) {
+  cat(sprintf("\n--- %s ---\n", label))
+  tryCatch({
+    em <- emtrends(model, ~ target_present, var = "speed_num", data = data)
+    print(summary(em))
+    cat("Pairwise contrast (absent vs present velocity slope):\n")
+    print(pairs(em))
+    summary(em)
+  }, error = function(e) {
+    cat(sprintf("emtrends failed: %s\n", conditionMessage(e)))
+    NULL
+  })
+}
+
+em_rt   <- get_emtrends(m_rt,   dt_rt,  "Reaction time (log s)")
+em_acc  <- get_emtrends(m_acc,  dt_acc, "Accuracy (logit)")
+em_fix  <- get_emtrends(m_fix,  dt_eye, "Fixation count")
+em_scan <- get_emtrends(m_scan, dt_eye, "Scanpath length")
+em_disp <- get_emtrends(m_disp, dt_eye, "Dispersion")
+em_ctr  <- get_emtrends(m_ctr,  dt_eye, "Centre distance")
+
+# Save emtrends to CSV
+em_list <- list(
+  "Reaction time (log s)" = em_rt,
+  "Accuracy (logit)"      = em_acc,
+  "Fixation count"        = em_fix,
+  "Scanpath length (deg)" = em_scan,
+  "Dispersion (deg2)"     = em_disp,
+  "Centre distance (deg)" = em_ctr
+)
+
+em_table <- bind_rows(
+  lapply(names(em_list), function(nm) {
+    if (!is.null(em_list[[nm]])) {
+      as.data.frame(em_list[[nm]]) %>% mutate(outcome = nm)
+    }
+  })
+)
+
+write.csv(em_table, "emtrends_velocity_by_condition.csv", row.names = FALSE)
+cat("\nVelocity slopes by condition written to emtrends_velocity_by_condition.csv\n")
 
