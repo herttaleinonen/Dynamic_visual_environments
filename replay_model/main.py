@@ -92,7 +92,7 @@ if __name__ == "__main__":
             visibility_dir=VIS_DIR,
             output_csv="replay_model_results_test.csv",
             fitted_params_csv="fitted_params_test.csv",
-            n_model_repeats=100,
+            n_model_repeats=1000,
             spline_s=0.5,
             max_calib_drift_deg=None,
             dt_override_s=MODEL_SAMPLING_RATE,
