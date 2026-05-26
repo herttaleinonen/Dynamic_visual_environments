@@ -265,8 +265,7 @@ dev.off()
 cat("Residual diagnostics saved to diagnostics_residuals.pdf\n")
 
 # ============================================================
-# ============================================================
-# Colors + journal-compliant theme
+# Plotting settings
 # ============================================================
 
 COND_COLORS <- c(
@@ -274,12 +273,6 @@ COND_COLORS <- c(
   "present" = "#1f77b4"
 )
 
-# Journal guidelines:
-# - Helvetica font
-# - 10pt axis numbers, 12pt axis labels
-# - No bold
-# - Axis lines and ticks
-# - Minimal padding
 journal_theme <- theme_minimal(base_size = 22, base_family = "Helvetica") +
   theme(
     panel.grid.major.x = element_blank(),
@@ -353,7 +346,7 @@ plot_spaghetti_with_lmm <- function(df, dv_name, model, ylab,
 # Generate plots
 # ============================================================
 
-# --- Figure 5: RT (a) and Accuracy (b) ---
+# --- RT (a) and Accuracy (b) ---
 
 p_rt_spag <- ggplot(dt_rt, aes(x = speed_num, y = rt, color = target_present)) +
   geom_line(aes(group = interaction(participant, target_present)),
@@ -426,9 +419,7 @@ p_acc_spag <- ggplot(dt_acc, aes(x = speed_num, y = acc, color = target_present)
   labs(x = "Velocity (deg/s)", y = "Accuracy", color = "Target", tag = "b.") +
   journal_theme
 
-# --- Figure 6: Eye movement panels (a-d) ---
-# All panels keep their legend data; patchwork collects into one shared legend
-# x-axis label only on bottom panels
+# --- Eye movement panels (a-d) ---
 
 p_fix_spag <- plot_spaghetti_with_lmm(
   dt_eye, "fix_count", m_fix, "Fixation count",
@@ -454,7 +445,7 @@ p_ctr_spag <- plot_spaghetti_with_lmm(
   show_x_label = TRUE, show_legend = TRUE
 ) + labs(tag = "d.")
 
-# Print individual panels to PDF for inspection
+# Print individual panels to PDF
 pdf("figures_preview.pdf", width = 7, height = 5)
 print(p_rt_spag)
 print(p_acc_spag)
@@ -475,14 +466,14 @@ fig6 <- (p_fix_spag | p_scan_spag) / (p_disp_spag | p_ctr_spag) +
   theme(legend.position = "bottom")
 print(fig6)
 
-# Save as PDF (vector, for journal) and TIFF (for Word)
+# Save as PDF (vector) and TIFF
 ggsave("figure5.pdf",  fig5, width = 14, height = 5,  device = cairo_pdf)
 ggsave("figure5.tiff", fig5, width = 14, height = 5,  dpi = 300)
 
 ggsave("figure6.pdf",  fig6, width = 14, height = 10, device = cairo_pdf)
 ggsave("figure6.tiff", fig6, width = 14, height = 10, dpi = 300)
 
-cat("\nFigures saved as PDF and EPS.\n")
+cat("\nFigures saved as PDF and TIFF.\n")
 
 # ============================================================
 # Results tables and F-tests
@@ -533,8 +524,7 @@ cat("\nF-tests written to f_tests.csv\n")
 # ============================================================
 # POST-HOC: velocity slopes separately for absent and present
 # Use emtrends() when the velocity x target_present interaction
-# is significant, to report velocity effects per condition
-# rather than a single pooled coefficient.
+# is significant
 # ============================================================
 
 cat("\n=== VELOCITY SLOPES BY TARGET PRESENCE (emtrends) ===\n")
