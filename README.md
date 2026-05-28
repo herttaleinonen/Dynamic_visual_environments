@@ -6,7 +6,7 @@
 Python 3.10 or newer. <br/>
 
 # Installation
-To install, clone the `replay_model` -folder to your machine.
+Clone the `replay_model` -folder to your machine.
 
 # Running 
 
@@ -14,9 +14,9 @@ To run the model, run
 ```
 python3 main.py
 ```
-By default, runs parameter fitting, DFSM replay model and saccade predictions.
+By default, this commands runs parameter fitting, model simulations and saccade predictions.
 
-To recreate model vs human figures and analyses, run
+To recreate model vs. human figures and analyses, run
 ```
 python3 figures.py
 ```
