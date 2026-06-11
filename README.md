@@ -14,7 +14,7 @@ To run the model, run
 ```
 python3 main.py
 ```
-By default, this commands runs parameter fitting, model simulations and saccade predictions.
+By default, this command runs parameter fitting, model simulations and saccade predictions.
 
 To recreate model vs. human figures and analyses, run
 ```
