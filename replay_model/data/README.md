@@ -61,9 +61,6 @@ Raw eye-tracking data recorded with EyeLink during the visual search task.
 
 These files are converted from `.EDF` format and contain time-stamped eye movement events, calibration information, and experiment messages. The ASC files include:
 
-- **Calibration and validation logs**  
-  Information about calibration quality (e.g., average error in degrees, gain, offsets).
-
 - **MSG events (messages)**  
   Time-stamped markers sent from the experiment script, including:
   - `TRIALID`: start of a trial
