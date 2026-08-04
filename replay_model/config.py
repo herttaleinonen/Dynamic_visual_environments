@@ -24,7 +24,7 @@ VT_TO_SPEED = {"vt1": 0, "vt2": 100, "vt3": 200, "vt4": 300, "vt5": 400}
 
 SPEED_ORDER = [0, 100, 200, 300, 400]
 
-GLOBAL_TND_S = 0.50 # non-decision time
+GLOBAL_TND_S = 0.70 # non-decision time
 
 MODEL_SAMPLING_RATE = 0.05 # 0.05 = fixed-sampling-rate model; None = object-displacement-based discretization model
 
