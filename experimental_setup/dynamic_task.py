@@ -8,7 +8,7 @@ Created on Wed May 28 11:28:41 2025
 
     Provides run_dynamic_trials() for calling from main.py after EyeLink setup.
     Displays dynamic Gabor arrays on a Gaussian noise background,
-    flashes a fixation cross between trials for 0.5s,
+    flashes a fixation cross between trials,
     collects responses during the trial duration window,
     provides feedback between trials, incorrect/correct based on gaze response.
     
