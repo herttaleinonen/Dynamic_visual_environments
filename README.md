@@ -19,7 +19,8 @@ $$
 where 𝐻(𝑒, 𝑣) and 𝐹(𝑒, 𝑣) are hit and false-alarm rates, 𝑒 standing for retinal eccentricity and
 𝑣 for object velocity, and $\Phi^{-1}$ is the inverse cumulative normal distribution. The resulting
 values were interpolated across eccentricity to obtain a continuous sensitivity function
-𝑆(𝑒, 𝑣) for each velocity condition.
+𝑆(𝑒, 𝑣) for each velocity condition. At each time step 𝑡, each object 𝑖 produces a noisy internal sensory sample $z_{i,t}$ which was
+modelled as a Gaussian random variable:
 
 $$
 z_{i,t}\sim
