@@ -12,13 +12,9 @@ e_{i,t} = \|x_{i,t} - g_t\|,
 $$
 
 where $x_{i,t}$ and $g_t$ represent the object and gaze positions in 2D coordinates.
-
 Orientation sensitivity was based on the visibility task data:
 
-$$
-S(e,v) = \Phi^{-1}\!\bigl(H(e,v)\bigr) - \Phi^{-1}\!\bigl(F(e,v)\bigr),
-\tag{2}
-$$
+$$ S(e,v) = \Phi^{-1}(H(e,v)) - \Phi^{-1}(F(e,v)) $$
 
 where $H(e,v)$ and $F(e,v)$ are hit and false-alarm rates, $e$ stands for retinal eccentricity, $v$ for object velocity, and $\Phi^{-1}$ is the inverse cumulative normal distribution. The resulting values were interpolated across eccentricity to obtain a continuous sensitivity function $S(e,v)$ for each velocity condition.
 
