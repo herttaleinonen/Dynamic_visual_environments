@@ -35,6 +35,10 @@ $$
 \Delta\mathrm{LLR}_{i,t}=S_{\Delta t}(e_{i,t},v)z_{i,t}-\frac{1}{2}S_{\Delta t}(e_{i,t},v)^2
 $$
 
+$$
+\mathrm{LLR}_{i,t}=\mathrm{LLR}_{i,t-1}+\Delta\mathrm{LLR}_{i,t}=\sum_{\tau=1}^{t}\Delta\mathrm{LLR}_{i,\tau}
+$$
+
 
 # Requirements
 Python 3.10 or newer. <br/>
