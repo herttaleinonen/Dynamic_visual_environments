@@ -13,7 +13,7 @@ $$
 where $x_{i,t}$ and $g_t$ are the object and gaze positions in 2D coordinates. Orientation sensitivity was based on the visibility task data:
 
 $$
-S(e,v)=\Phi^{-1}(H(e,v))-\Phi^{-1}(F(e,v))
+S(e,v)=\Phi^{-1}(H(e,v))-\Phi^{-1}(F(e,v)),
 $$
 
 where 𝐻(𝑒, 𝑣) and 𝐹(𝑒, 𝑣) are hit and false-alarm rates, 𝑒 standing for retinal eccentricity and
@@ -26,7 +26,7 @@ $$
 z_{i,t}\sim
 \begin{cases}
 \mathcal{N}(0,\eta), & \text{if the object is a distractor},\\
-\mathcal{N}(S_{\Delta t}(e_{i,t},v),\eta), & \text{if the object is the target}.
+\mathcal{N}(S_{\Delta t}(e_{i,t},v),\eta), & \text{if the object is the target},
 \end{cases}
 $$
 
@@ -37,7 +37,7 @@ assuming that discriminability grows with the square root of integration time:
 
 $$
 S_{\Delta t}(e_{i,t},v)=
-\alpha\,S(e_{i,t},v)\sqrt{\frac{\Delta t}{0.4}}
+\alpha\,S(e_{i,t},v)\sqrt{\frac{\Delta t}{0.4}},
 $$
 
 where 𝛼 is a fixed global gain parameter that maps sensitivity measured in the visibility task to
@@ -47,27 +47,27 @@ $$
 \Delta\mathrm{LLR}_{i,t}=
 \log
 \frac{p(z_{i,t}\mid\text{target})}
-{p(z_{i,t}\mid\text{distractor})}
+{p(z_{i,t}\mid\text{distractor})},
 $$
 
 where 𝑝(𝑧 ∣ ⋅) represents the probability density of the sensory observation under the specified
 hypothesis. Under the assumption of Gaussian sensory noise with unit variance simplifies to
 
 $$
-\Delta\mathrm{LLR}_{i,t}=S_{\Delta t}(e_{i,t},v)z_{i,t}-\frac{1}{2}S_{\Delta t}(e_{i,t},v)^2
+\Delta\mathrm{LLR}_{i,t}=S_{\Delta t}(e_{i,t},v)z_{i,t}-\frac{1}{2}S_{\Delta t}(e_{i,t},v)^2.
 $$
 
 Object-specific evidence was accumulated over time:
 
 $$
-\mathrm{LLR}_{i,t}=\mathrm{LLR}_{i,t-1}+\Delta\mathrm{LLR}_{i,t}=\sum_{\tau=1}^{t}\Delta\mathrm{LLR}_{i,\tau}
+\mathrm{LLR}_{i,t}=\mathrm{LLR}_{i,t-1}+\Delta\mathrm{LLR}_{i,t}=\sum_{\tau=1}^{t}\Delta\mathrm{LLR}_{i,\tau}.
 $$
 
 To infer whether a target was present anywhere in the display, the model used the maximum
 object-wise accumulated evidence as the decision variable:
 
 $$
-D_t=\max_i \mathrm{LLR}_{i,t}
+D_t=\max_i \mathrm{LLR}_{i,t}.
 $$
 
 At each time step 𝑡, the decision variable $D_t$ was compared against two fixed decision bounds.
@@ -82,7 +82,7 @@ For each participant, the parameters 𝜂 (sensory noise) and Θ (decision crite
 estimated via grid search by minimizing a composite loss function:
 
 $$
-L=\sum_v\left[(d'_h-d'_m)^2+(\log RT_h^{TP}-\log RT_m^{TP})^2+(\log RT_h^{TA}-\log RT_m^{TA})^2\right]
+L=\sum_v\left[(d'_h-d'_m)^2+(\log RT_h^{TP}-\log RT_m^{TP})^2+(\log RT_h^{TA}-\log RT_m^{TA})^2\right],
 $$
 
 where the subscripts *h* and *m* denote human and model respectively, and the sum runs over
