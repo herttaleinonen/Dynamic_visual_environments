@@ -10,6 +10,14 @@ $$
 S(e,v)=\Phi^{-1}(H(e,v))-\Phi^{-1}(F(e,v))
 $$
 
+$$
+z_{i,t}\sim
+\begin{cases}
+\mathcal{N}(0,\eta), & \text{if the object is a distractor},\\
+\mathcal{N}(S_{\Delta t}(e_{i,t},v),\eta), & \text{if the object is the target}.
+\end{cases}
+$$
+
 # Requirements
 Python 3.10 or newer. <br/>
 
