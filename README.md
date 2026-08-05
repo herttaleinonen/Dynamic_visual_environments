@@ -30,11 +30,18 @@ z_{i,t}\sim
 \end{cases}
 $$
 
+where 𝜂 is the sensory noise variance. Thus, distractors generate noise-only activity, whereas
+targets generate signal-plus-noise activity. Per-step sensitivity was derived from the calibrated
+𝑆(𝑒, 𝑣), measured over a 400 ms observation window (duration of the visibility task), by
+assuming that discriminability grows with the square root of integration time:
 
 $$
 S_{\Delta t}(e_{i,t},v)=
 \alpha\,S(e_{i,t},v)\sqrt{\frac{\Delta t}{0.4}}
 $$
+
+where 𝛼 is a fixed global gain parameter that maps sensitivity measured in the visibility task to
+the effective sensory signal during search, absorbing unmodeled factors such as crowding. Momentary sensory samples were converted into object-wise log-likelihood ratio (LLR) increments:
 
 $$
 \Delta\mathrm{LLR}_{i,t}=
@@ -43,29 +50,47 @@ $$
 {p(z_{i,t}\mid\text{distractor})}
 $$
 
+where 𝑝(𝑧 ∣ ⋅) represents the probability density of the sensory observation under the specified
+hypothesis. Under the assumption of Gaussian sensory noise with unit variance simplifies to
+
 $$
 \Delta\mathrm{LLR}_{i,t}=S_{\Delta t}(e_{i,t},v)z_{i,t}-\frac{1}{2}S_{\Delta t}(e_{i,t},v)^2
 $$
+
+Object-specific evidence was accumulated over time:
 
 $$
 \mathrm{LLR}_{i,t}=\mathrm{LLR}_{i,t-1}+\Delta\mathrm{LLR}_{i,t}=\sum_{\tau=1}^{t}\Delta\mathrm{LLR}_{i,\tau}
 $$
 
+To infer whether a target was present anywhere in the display, the model used the maximum
+object-wise accumulated evidence as the decision variable:
+
 $$
 D_t=\max_i \mathrm{LLR}_{i,t}
 $$
 
-$$
-D_t \ge \Theta_{p}
-$$
+At each time step 𝑡, the decision variable 𝐷$ was compared against two fixed decision bounds.
+A positive upper bound $\Theta_{p}$ governed target-present responses: if $D_t \ge \Theta_{p}$ the model
+responded, “target present”, and reaction time was recorded as (𝑡 + 1)Δ𝑡. Target-absent
+responses were governed by a fixed negative lower bound; if $D_t \le \Theta_{A}$, the model responded, 
+“target absent”, and reaction time was recorded as (𝑡 + 1)Δ𝑡. If no bound was
+crossed by stimulus offset (3.5 s), the model responded “target present” if the final decision
+variable was positive, and “target absent” if negative.
 
-$$
-D_t \le \Theta_{A}
-$$
+For each participant, the parameters 𝜂 (sensory noise) and Θ (decision criterion) were
+estimated via grid search by minimizing a composite loss function:
 
 $$
 L=\sum_v\left[(d_h-d_m)^2+(\log RT_h^{TP}-\log RT_m^{TP})^2+(\log RT_h^{TA}-\log RT_m^{TA})^2\right]
 $$
+
+where the subscripts h and m denote human and model respectively, and the sum runs over
+velocity conditions 𝑣. Target-present TP , and target-absent TA reaction times are compared
+on a log scale to treat proportional differences equivalently across conditions. Trial-wise
+stimulus and gaze time series were precomputed once. Parameter estimation proceeded in
+two phases: η was searched over [0.002, 0.20] (12 points) and Θ over [0.02, 1.0] (12 points),
+with a refined search of ±0.15 and ±1.0 respectively around the coarse optimum. 
 
 
 # Requirements
