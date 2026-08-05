@@ -6,6 +6,10 @@ $$
 e_{i,t} = \lVert x_{i,t} - g_t \rVert
 $$
 
+$$
+S(e,v)=\Phi^{-1}(H(e,v))-\Phi^{-1}(F(e,v))
+$$
+
 # Requirements
 Python 3.10 or newer. <br/>
 
