@@ -2,7 +2,7 @@
 
 <a href="url"><img src="https://github.com/herttaleinonen/DFSM/blob/main/replay_model/images/dfsm.png" height="548" width="548" ></a>
 
-# Visibility calibration
+Visibility calibration
 
 Each search trial was approximated as a sequence of discrete time steps ($\Delta t = 50$ ms), even when the underlying evidence accumulation can be considered as continuous. For each object $i$ at time step $t$, retinal eccentricity was computed as
 
@@ -22,7 +22,7 @@ $$
 
 where $H(e,v)$ and $F(e,v)$ are hit and false-alarm rates, $e$ stands for retinal eccentricity, $v$ for object velocity, and $\Phi^{-1}$ is the inverse cumulative normal distribution. The resulting values were interpolated across eccentricity to obtain a continuous sensitivity function $S(e,v)$ for each velocity condition.
 
-# Foveated sensory signal
+Foveated sensory signal
 
 At each time step $t$, each object $i$ produces a noisy internal sensory sample $z_{i,t}$ which was modelled as a Gaussian random variable:
 
@@ -49,7 +49,7 @@ $$
 
 where $\alpha$ is a fixed global gain parameter that maps sensitivity measured in the visibility task to the effective sensory signal during search, absorbing unmodeled factors such as crowding (Whitney & Levi, 2011).
 
-# Evidence accumulation
+Evidence accumulation
 
 Momentary sensory samples were converted into object-wise log-likelihood ratio (LLR) increments:
 
@@ -92,7 +92,7 @@ $$
 \tag{7}
 $$
 
-# Pooling across objects
+Pooling across objects
 
 To infer whether a target was present anywhere in the display, the model used the maximum object-wise accumulated evidence as the decision variable:
 
@@ -105,7 +105,7 @@ $$
 
 This operation selects the object with the strongest accumulated evidence at each time step, effectively implementing a winner-take-all decision rule across objects.
 
-# Decision rule and response time
+Decision rule and response time
 
 At each time step $t$, the decision variable $D_t$ was compared against two fixed decision bounds.
 
@@ -135,7 +135,7 @@ $$
 
 If no bound was crossed by stimulus offset (3.5 s), the model responded **target present** if the final decision variable was positive, and **target absent** if negative.
 
-# Parameter fitting and trial simulations
+Parameter fitting and trial simulations
 
 For each participant, the parameters $\eta$ (sensory noise) and $\Theta$ (decision criterion) were estimated via grid search by minimizing a composite loss function:
 
