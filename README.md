@@ -18,6 +18,12 @@ z_{i,t}\sim
 \end{cases}
 $$
 
+
+$$
+S_{\Delta t}(e_{i,t},v)=
+\alpha\,S(e_{i,t},v)\sqrt{\frac{\Delta t}{0.4}}
+$$
+
 # Requirements
 Python 3.10 or newer. <br/>
 
