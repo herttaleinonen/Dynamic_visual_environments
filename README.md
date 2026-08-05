@@ -86,7 +86,7 @@ L=\sum_v\left[(d'_h-d'_m)^2+(\log RT_h^{TP}-\log RT_m^{TP})^2+(\log RT_h^{TA}-\l
 $$
 
 where the subscripts h and m denote human and model respectively, and the sum runs over
-velocity conditions 𝑣. Target-present TP , and target-absent TA reaction times are compared
+velocity conditions 𝑣. Target-present *TP* , and target-absent *TA* reaction times are compared
 on a log scale to treat proportional differences equivalently across conditions. Trial-wise
 stimulus and gaze time series were precomputed once. Parameter estimation proceeded in
 two phases: η was searched over [0.002, 0.20] (12 points) and Θ over [0.02, 1.0] (12 points),
