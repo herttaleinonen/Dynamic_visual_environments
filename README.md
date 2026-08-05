@@ -24,6 +24,13 @@ S_{\Delta t}(e_{i,t},v)=
 \alpha\,S(e_{i,t},v)\sqrt{\frac{\Delta t}{0.4}}
 $$
 
+$$
+\Delta\mathrm{LLR}_{i,t}=
+\log
+\frac{p(z_{i,t}\mid\text{target})}
+{p(z_{i,t}\mid\text{distractor})}
+$$
+
 # Requirements
 Python 3.10 or newer. <br/>
 
