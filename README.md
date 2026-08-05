@@ -43,6 +43,18 @@ $$
 D_t=\max_i \mathrm{LLR}_{i,t}
 $$
 
+$$
+D_t \ge \Theta_{+}
+$$
+
+$$
+D_t \le \Theta_{-}
+$$
+
+$$
+L=\sum_v\left[(d_h-d_m)^2+(\log RT_h^{TP}-\log RT_m^{TP})^2+(\log RT_h^{TA}-\log RT_m^{TA})^2\right]
+$$
+
 
 # Requirements
 Python 3.10 or newer. <br/>
