@@ -40,7 +40,7 @@ where $\eta$ is the sensory noise variance. Thus, distractors generate noise-onl
 Per-step sensitivity was derived from the calibrated $S(e,v)$, measured over a 400 ms observation window (duration of the visibility task), by assuming that discriminability grows with the square root of integration time:
 
 $$
-S^*(e_{i,t},v)
+S^*(e,v)
 =
 \alpha \, S(e_{i,t},v)
 \sqrt{\frac{\Delta t}{0.4}},
