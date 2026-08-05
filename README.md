@@ -82,7 +82,7 @@ For each participant, the parameters 𝜂 (sensory noise) and Θ (decision crite
 estimated via grid search by minimizing a composite loss function:
 
 $$
-L=\sum_v\left[((d')_h-d_m)^2+(\log RT_h^{TP}-\log RT_m^{TP})^2+(\log RT_h^{TA}-\log RT_m^{TA})^2\right]
+L=\sum_v\left[(d'_h-d_m)^2+(\log RT_h^{TP}-\log RT_m^{TP})^2+(\log RT_h^{TA}-\log RT_m^{TA})^2\right]
 $$
 
 where the subscripts h and m denote human and model respectively, and the sum runs over
