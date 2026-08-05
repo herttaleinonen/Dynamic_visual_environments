@@ -70,7 +70,7 @@ $$
 D_t=\max_i \mathrm{LLR}_{i,t}
 $$
 
-At each time step 𝑡, the decision variable 𝐷$ was compared against two fixed decision bounds.
+At each time step 𝑡, the decision variable $D_t$ was compared against two fixed decision bounds.
 A positive upper bound $\Theta_{p}$ governed target-present responses: if $D_t \ge \Theta_{p}$ the model
 responded, “target present”, and reaction time was recorded as (𝑡 + 1)Δ𝑡. Target-absent
 responses were governed by a fixed negative lower bound; if $D_t \le \Theta_{A}$, the model responded, 
