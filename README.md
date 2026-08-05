@@ -10,7 +10,7 @@ $$
 e_{i,t} = \lVert x_{i,t} - g_t \rVert
 $$
 
-where x_{i,t} and g_t are the object and gaze positions in 2D coordinates. Orientation sensitivity was based on the visibility task data:
+where $x_{i,t}$ and g_t are the object and gaze positions in 2D coordinates. Orientation sensitivity was based on the visibility task data:
 
 $$
 S(e,v)=\Phi^{-1}(H(e,v))-\Phi^{-1}(F(e,v))
