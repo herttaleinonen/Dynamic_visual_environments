@@ -39,6 +39,10 @@ $$
 \mathrm{LLR}_{i,t}=\mathrm{LLR}_{i,t-1}+\Delta\mathrm{LLR}_{i,t}=\sum_{\tau=1}^{t}\Delta\mathrm{LLR}_{i,\tau}
 $$
 
+$$
+D_t=\max_i \mathrm{LLR}_{i,t}
+$$
+
 
 # Requirements
 Python 3.10 or newer. <br/>
