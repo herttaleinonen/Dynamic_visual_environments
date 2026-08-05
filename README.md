@@ -44,11 +44,11 @@ D_t=\max_i \mathrm{LLR}_{i,t}
 $$
 
 $$
-D_t \ge \Theta_{+}
+D_t \ge \Theta_{p}
 $$
 
 $$
-D_t \le \Theta_{-}
+D_t \le \Theta_{A}
 $$
 
 $$
