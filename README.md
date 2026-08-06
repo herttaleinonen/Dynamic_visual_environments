@@ -58,7 +58,13 @@ $$
 \Delta\mathrm{LLR}_{i,t}=\frac{S_{\Delta t}(e_{i,t},v)}{\eta}z_{i,t}-\frac{1}{2\eta}S_{\Delta t}(e_{i,t},v)^2,
 $$
 
-which reduces to $\Delta\mathrm{LLR}_{i,t}=S_{\Delta t}(e_{i,t},v)z_{i,t}-\frac{1}{2}S_{\Delta t}(e_{i,t},v)^2$ in the special case 𝜂 = 1. Because the accumulated evidence is compared against a freely-fit criterion Θ (see below), this rescaling by 𝜂 is fully absorbed by the fitting procedure and does not affect the validity of the decision rule for the fitted values of 𝜂.
+which reduces to 
+
+$$
+\Delta\mathrm{LLR}_{i,t}=S_{\Delta t}(e_{i,t},v)z_{i,t}-\frac{1}{2}S_{\Delta t}(e_{i,t},v)^2
+$$
+
+in the special case 𝜂 = 1. Because the accumulated evidence is compared against a freely-fit criterion Θ (see below), this rescaling by 𝜂 is fully absorbed by the fitting procedure and does not affect the validity of the decision rule for the fitted values of 𝜂.
 
 Object-specific evidence was accumulated over time:
 
