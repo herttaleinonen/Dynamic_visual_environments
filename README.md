@@ -52,7 +52,7 @@ $$
 $$
 
 where 𝑝(𝑧 ∣ ⋅) represents the probability density of the sensory observation under the specified
-hypothesis. Under Gaussian sensory noise with variance 𝜂 (Eq. 3), this simplifies to
+hypothesis. Under Gaussian sensory noise with variance 𝜂, this simplifies to
 
 $$
 \Delta\mathrm{LLR}_{i,t}=\frac{S_{\Delta t}(e_{i,t},v)}{\eta}z_{i,t}-\frac{1}{2\eta}S_{\Delta t}(e_{i,t},v)^2.
