@@ -55,7 +55,7 @@ where 𝑝(𝑧 ∣ ⋅) represents the probability density of the sensory obser
 hypothesis. Under Gaussian sensory noise with variance 𝜂, this simplifies to
 
 $$
-\Delta\mathrm{LLR}_{i,t}={S_{\Delta t}(e_{i,t},v)}{z_i,t}-\frac{1}{2}S_{\Delta t}(e_{i,t},v)^2.
+\Delta\mathrm{LLR}_{i,t}={S_{\Delta t}(e_{i,t},v)}{z_{i,t}}-\frac{1}{2}S_{\Delta t}(e_{i,t},v)^2.
 $$
 
 Object-specific evidence was accumulated over time:
