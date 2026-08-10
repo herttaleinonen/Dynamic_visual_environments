@@ -95,7 +95,7 @@ with a refined search of ±0.15 and ±1.0 respectively around the coarse optimum
 
 
 # Requirements
-Python 3.10 or newer. <br/>
+Python 3.10. <br/>
 
 # Installation
 Clone the `replay_model` -folder to your machine.
