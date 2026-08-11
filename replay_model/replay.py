@@ -46,6 +46,7 @@ from parsing_and_gaze import (
 from visibility import (
     build_dprime_splines_for_participant,
     make_visibility_null_model,
+    build_group_mean_dprime_splines,
 )
 
 
@@ -55,6 +56,7 @@ from visibility import (
 def ecc_deg_from_cells(obj_xy_cells_t: np.ndarray, gaze_xy_cells_t: np.ndarray) -> np.ndarray:
     ecc_cells = np.linalg.norm(obj_xy_cells_t - gaze_xy_cells_t[None, :], axis=1)
     return ecc_cells * DEG_PER_CELL
+
 
 def min_target_eccentricity(obj_xy_cells, gaze_xy_cells, target_index):
     """Return minimum eccentricity (deg) between gaze and target over trial."""
@@ -74,6 +76,7 @@ def min_target_eccentricity(obj_xy_cells, gaze_xy_cells, target_index):
             dmin = ecc
 
     return float(dmin) if np.isfinite(dmin) else np.nan
+
 
 def time_to_first_vis_d400(
     obj_xy_cells: np.ndarray,
@@ -102,6 +105,7 @@ def time_to_first_vis_d400(
             return float((t + 1) * dt_s)  # matches t_sec convention
     return np.nan
 
+
 def infer_target_index(gabor_pos: np.ndarray, target_traj: np.ndarray) -> int:
     """
     gabor_pos:    [T, N, 2] positions in grid coords
@@ -119,9 +123,66 @@ def infer_target_index(gabor_pos: np.ndarray, target_traj: np.ndarray) -> int:
     return int(np.argmin(dists))
 
 
-# ------------------
+# =========================
 # The main update loop for a single trial
-# ------------------
+# =========================
+def run_replay_trial(
+    obj_xy_cells: np.ndarray,
+    gaze_xy_cells: np.ndarray,
+    speed_px_s: int,
+    dprime_splines: Dict[int, UnivariateSpline],
+    dt_s: float,
+    eta: float,
+    decision_theta_present: float,
+    target_present: int,
+    target_index: Optional[int],
+    max_time_s: float = 3.5,
+    alpha_search: float = 1.0,
+    dt_override_s: Optional[float] = None,
+    rng: Optional[np.random.Generator] = None,
+    return_dv: bool = False,   # <-- new, optional, defaults off so nothing else breaks
+) -> Tuple[int, float]:
+    if rng is None:
+        rng = np.random.default_rng()
+    T, N, _ = obj_xy_cells.shape
+    if dt_s <= 0:
+        dt_s = max_time_s / max(1, T - 1)
+    dt_eff = dt_s if dt_override_s is None else float(dt_override_s)
+    T_use = min(T, int(np.floor(max_time_s / dt_s)))
+    if T_use <= 0:
+        return (0, 0.0, 0.0) if return_dv else (0, 0.0)
+    if speed_px_s not in dprime_splines:
+        raise ValueError(f"Missing d' spline for speed_px_s={speed_px_s}")
+    theta_pos = float(decision_theta_present)
+    theta_neg = -theta_pos
+    spl = dprime_splines[speed_px_s]
+    logLR = np.zeros(N, dtype=float)
+    eta_safe = max(1e-6, float(eta))
+    noise_scale = np.sqrt(eta_safe)
+    for t in range(T_use):
+        gaze = gaze_xy_cells[t]
+        if np.any(np.isnan(gaze)):
+            gaze = np.array([GRID_SIZE_X / 2.0, GRID_SIZE_Y / 2.0], dtype=float)
+        ecc_deg = ecc_deg_from_cells(obj_xy_cells[t], gaze)
+        d400 = np.maximum(alpha_search * spl(ecc_deg), 0.0)
+        dstep = 0.4 * d400 * np.sqrt(dt_eff / 0.4)
+        x = rng.normal(loc=0.0, scale=noise_scale, size=N)
+        if (target_present == 1) and (target_index is not None):
+            x[target_index] += dstep[target_index]
+        dllr = dstep * x - 0.5 * (dstep ** 2)
+        logLR += dllr
+        dv = np.max(logLR)
+        t_sec = (t + 1) * dt_eff
+        if dv >= theta_pos:
+            return (1, t_sec, dv) if return_dv else (1, t_sec)
+        if dv <= theta_neg:
+            return (0, t_sec, dv) if return_dv else (0, t_sec)
+    resp = 1 if dv > 0 else 0
+    return (resp, T_use * dt_eff, dv) if return_dv else (resp, T_use * dt_eff)
+"""
+# =========================
+# The main update loop for a single trial
+# =========================
 def run_replay_trial(
     obj_xy_cells: np.ndarray,
     gaze_xy_cells: np.ndarray,
@@ -195,11 +256,11 @@ def run_replay_trial(
 
     resp = 1 if dv > 0 else 0
     return resp, T_use * dt_eff
+"""
 
-
-# ------------------
+# =========================
 # Update loop for saccade prediction 
-# ------------------
+# =========================
 def replay_trace_trial(
     obj_xy_cells: np.ndarray,
     gaze_xy_cells: np.ndarray,
@@ -489,9 +550,13 @@ def build_saccade_prediction_table(
     return out
 
 
-# -------------------------------
+
+
+
+
+# =========================
 # Run everything + build final CSV
-# -------------------------------
+# =========================
 def run_full_replay(
     search_dir: str,
     visibility_dir: str,
@@ -503,6 +568,7 @@ def run_full_replay(
     fitted_params_csv: Optional[str] = None,
     dt_override_s: Optional[float] = None,
     debug: bool = False,
+    use_group_visibility: bool = False,
 ) -> pd.DataFrame:
 
     vis_by_pp = collect_visibility_files(visibility_dir)
@@ -521,7 +587,7 @@ def run_full_replay(
         str(r["participant"]).strip(): (float(r["eta"]), float(r["theta"]))
         for _, r in fit_df.iterrows()
     }
-
+    """
     dprime_models: Dict[str, Dict[int, UnivariateSpline]] = {}
     for pp, files in vis_by_pp.items():
         base_model = build_dprime_splines_for_participant(files, spline_s=spline_s)
@@ -532,7 +598,25 @@ def run_full_replay(
             constant_rule=VIS_CONSTANT_RULE,
             ref_ecc_deg=VIS_REF_ECC_DEG,
         )
+    """
+    dprime_models: Dict[str, Dict[int, UnivariateSpline]] = {}
 
+    if use_group_visibility:
+        group_splines = build_group_mean_dprime_splines(vis_by_pp, spline_s=spline_s)
+        #print(f"[REPLAY] Using group-mean visibility splines for all participants")
+        for pp in vis_by_pp.keys():
+            dprime_models[pp] = group_splines
+    else:
+        for pp, files in vis_by_pp.items():
+            base_model = build_dprime_splines_for_participant(files, spline_s=spline_s)
+            dprime_models[pp] = make_visibility_null_model(
+                base_model,
+                mode=VISIBILITY_MODE,
+                source_speed=VIS_NULL_SOURCE_SPEED,
+                constant_rule=VIS_CONSTANT_RULE,
+                ref_ecc_deg=VIS_REF_ECC_DEG,
+            )
+            
     all_rows = []
     printed_ecc_debug = set()
 
@@ -732,5 +816,8 @@ def run_full_replay(
     out.to_csv(output_csv, index=False)
     print(f"\nWrote {output_csv} rows={len(out)}")
     return out
+
+
+
 
 
