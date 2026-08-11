@@ -15,13 +15,15 @@ from scipy.interpolate import UnivariateSpline
 from config import VT_TO_SPEED
 from parsing_and_gaze import vt_from_name
 
-# -------------------------
+
+# =========================
 # Visibility -> d'(400ms)
-# -------------------------
+# =========================
 def rates_to_dprime(hit, fa, eps=1e-4):
     H = np.clip(hit, eps, 1 - eps)
     F = np.clip(fa, eps, 1 - eps)
     return norm.ppf(H) - norm.ppf(F)
+
 
 def compute_dprime_from_group(group: pd.DataFrame) -> pd.Series:
     """
@@ -45,6 +47,7 @@ def compute_dprime_from_group(group: pd.DataFrame) -> pd.Series:
     dprime = float(norm.ppf(H) - norm.ppf(F))
 
     return pd.Series({"dprime": dprime, "H": H, "F": F, "nT": nT, "nD": nD})
+
 
 def build_dprime_splines_for_participant(
     visibility_files: List[str],
@@ -99,9 +102,9 @@ def build_dprime_splines_for_participant(
     return splines
 
 
-# -------------------------
+# =========================
 # Visibility null-models
-# -------------------------
+# =========================
 def constant_dprime_fn(c: float):
     """
     Returns a callable that behaves like a spline but always returns
@@ -114,6 +117,7 @@ def constant_dprime_fn(c: float):
         return np.full_like(ecc, c, dtype=float)
 
     return f
+
 
 def make_visibility_null_model(
     dprime_models_pp: Dict[int, callable],
@@ -166,4 +170,57 @@ def make_visibility_null_model(
         return {s: const_fn for s in dprime_models_pp.keys()}
 
     raise ValueError(f"Unknown visibility null mode: {mode}")
+    
+
+def build_group_mean_dprime_splines(
+    vis_by_pp: Dict[str, List[str]],
+    spline_s: float = 0.5,
+    ecc_bin_edges: Optional[List[float]] = None,
+    ecc_bin_labels: Optional[List[float]] = None,
+) -> Dict[int, UnivariateSpline]:
+    """
+    Build a single group-mean d' spline per speed, averaged across all participants.
+    Use this as a shared visibility null model to test whether individual
+    visibility differences matter for model fit.
+    """
+    if ecc_bin_edges is None:
+        ecc_bin_edges = [0, 4.5, 9, 14, 18, 25]
+    if ecc_bin_labels is None:
+        ecc_bin_labels = [3, 6, 12, 16, 20]
+
+    # collect per-participant splines
+    all_splines: List[Dict[int, UnivariateSpline]] = []
+    for pp, files in vis_by_pp.items():
+        try:
+            spl = build_dprime_splines_for_participant(
+                files,
+                spline_s=spline_s,
+                ecc_bin_edges=ecc_bin_edges,
+                ecc_bin_labels=ecc_bin_labels,
+            )
+            all_splines.append(spl)
+        except Exception as e:
+            print(f"[GROUP VIS] skipping {pp}: {e}")
+
+    # find speeds present in all participants
+    speed_sets = [set(s.keys()) for s in all_splines]
+    common_speeds = set.intersection(*speed_sets)
+
+    sample_ecc = np.array([float(l) for l in ecc_bin_labels])
+
+    group_splines: Dict[int, UnivariateSpline] = {}
+    for speed in sorted(common_speeds):
+        # evaluate each participant's spline at the bin centres, then average
+        dp_matrix = np.stack(
+            [spl[speed](sample_ecc) for spl in all_splines], axis=0
+        )  # shape (n_participants, n_ecc_bins)
+        mean_dp = dp_matrix.mean(axis=0)
+
+        group_splines[int(speed)] = UnivariateSpline(
+            sample_ecc, mean_dp, k=2, s=spline_s
+        )
+
+    return group_splines
+
+
 
