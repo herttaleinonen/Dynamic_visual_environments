@@ -16,13 +16,15 @@ import statsmodels.api as sm
 import statsmodels.formula.api as smf
 import math
 
-# Journal-style for plots
+# ------------------------------------------------------------------
+# Journal-compliant style
+# ------------------------------------------------------------------
 class R:
     BASE_SIZE    = 18
     FONT_FAMILY  = "Helvetica"
-    LW_MEAN      = 1.4
-    LW_SPAG      = 0.5
-    LW_ERR       = 0.8
+    LW_MEAN      = 2.6 #1.4
+    LW_SPAG      = 2.6 #0.5
+    LW_ERR       = 1.8
     PT_SIZE      = 6
     MARKER       = "o"
     CAPSIZE      = 4
@@ -91,7 +93,6 @@ apply_r_style()
 # -----------------------
 CSV_PATH = "replay_model_results_test.csv"
 OUTDIR = "figures"
-
 USE_CORRECT_ONLY_FOR_HUMAN_RT = False
 MODEL_RT_FALLBACK_COL = "model_rt_mean_s"
 
@@ -200,6 +201,12 @@ dprime_pp = hit_pp.merge(fa_pp, on=["participant","speed_px_s_used"], how="inner
 dprime_pp["human_dprime"] = rates_to_dprime(dprime_pp["human_hit"], dprime_pp["human_fa"])
 dprime_pp["model_dprime"] = rates_to_dprime(dprime_pp["model_hit"], dprime_pp["model_fa"])
 
+
+mode_tag = "replay_model_results_test.csv"  
+
+dprime_pp.to_csv(f"{OUTDIR}/dprime_pp_{mode_tag}.csv", index=False)
+
+
 def rt_pp_for_subset(df_in, model_rt_col, *, condition_on="human_correct",
                      deadline_s=3.5, nondecision_s=0.25):
     tmp = df_in.copy()
@@ -216,6 +223,13 @@ rt_ta = df[df["human_target_present"] == 0].copy()
 if HAS_CONDITIONAL_MODEL_RT:
     rt_pp_tp = rt_pp_for_subset(rt_tp, MODEL_RT_PRESENT_COL)
     rt_pp_ta = rt_pp_for_subset(rt_ta, MODEL_RT_ABSENT_COL)
+    
+    #rt_pp_tp.to_csv(f"{OUTDIR}/rt_pp_tp_center.csv", index=False)
+    #rt_pp_ta.to_csv(f"{OUTDIR}/rt_pp_ta_center.csv", index=False)
+
+    rt_pp_ta.to_csv(f"{OUTDIR}/rt_pp_ta_{mode_tag}.csv", index=False)
+    rt_pp_tp.to_csv(f"{OUTDIR}/rt_pp_tp_{mode_tag}.csv", index=False)
+    
     rt_tp_tag = f"TP_correct_model={MODEL_RT_PRESENT_COL}"
     rt_ta_tag = f"TA_correct_model={MODEL_RT_ABSENT_COL}"
 else:
@@ -223,6 +237,8 @@ else:
     rt_pp_ta = rt_pp_for_subset(rt_ta, MODEL_RT_FALLBACK_COL)
     rt_tp_tag = f"TP_correct_model={MODEL_RT_FALLBACK_COL}"
     rt_ta_tag = f"TA_correct_model={MODEL_RT_FALLBACK_COL}"
+    
+
 
 def groupify(pp_df, human_col, model_col, prefix):
     g = (pp_df.groupby("speed_px_s_used", as_index=False)
@@ -253,9 +269,9 @@ rt_group_ta  = rt_groupify(rt_pp_ta)
 
 ensure_outdir(OUTDIR)
 
-# -----------------------
+# =============================================================
 # SINGLE-PANEL PLOTS
-# -----------------------
+# =============================================================
 apply_r_style()
 
 for rt_group, tag, panel_label in [
@@ -282,7 +298,7 @@ for rt_group, tag, panel_label in [
 
 x = speed_display(dprime_group["speed_px_s_used"].values)
 fig, ax = plt.subplots(figsize=(7, 5))
-add_panel_label(ax, "c.")
+add_panel_label(ax, "")
 plot_mean_with_err(ax, x, dprime_group["human_dprime_mean"], dprime_group["human_dprime_sem"],
                    color=COLOR_HUMAN, label="Human")
 plot_mean_with_err(ax, x, dprime_group["model_dprime_mean"], dprime_group["model_dprime_sem"],
@@ -296,9 +312,9 @@ fig.savefig(f"{OUTDIR}/dprime_vs_speed.pdf", format="pdf")
 plt.close()
 print(" - dprime_vs_speed.png")
 
-# -----------------------
+# =============================================================
 # MOSAIC PLOTS
-# -----------------------
+# =============================================================
 mosaic_style()
 
 def pivot_wide(pp_df, value_col):
@@ -433,12 +449,18 @@ acc_group.to_csv(f"{OUTDIR}/summary_accuracy_vs_speed.csv", index=False)
 dprime_group.to_csv(f"{OUTDIR}/summary_dprime_vs_speed.csv", index=False)
 print("Wrote figures to:", OUTDIR)
 
-# -----------------------
+# =============================================================
 # SACCADE TIMING ANALYSIS
-# -----------------------
+# =============================================================
+
+def add_panel_label(ax, label, fontsize=24, y=1.05):
+    ax.text(-0.12, y, label, transform=ax.transAxes,
+            fontsize=fontsize, fontweight="normal",
+            va="top", ha="left")
+    
 apply_r_style()
 
-df = pd.read_csv("saccade_prediction_table_test.csv")
+df = pd.read_csv("saccade_prediction_table.csv")
 print("Loaded rows:", len(df))
 df = df.copy()
 df = df[np.isfinite(df["margin"])]
@@ -496,9 +518,9 @@ bin_means   = df_plot.groupby("dv_bin")["fix_change_next_200"].mean()
 bin_centers = df_plot.groupby("dv_bin")["abs_dv"].mean()
 
 fig, ax = plt.subplots(figsize=(7, 5.5))
-add_panel_label(ax, "a.")
+add_panel_label(ax, "a.", y=1.08) 
 ax.plot(bin_centers, bin_means, marker="o", linewidth=R.LW_MEAN, markersize=R.PT_SIZE)
-ax.set_xlabel("Model evidence (|decision variable|)")
+ax.set_xlabel("Model evidence (| decision variable |)")
 ax.set_ylabel("Saccade probability")
 fig.tight_layout()
 fig.savefig(f"{OUTDIR}/plot_absdv_binned.png", dpi=300)
@@ -533,10 +555,135 @@ for i, pp in enumerate(participants):
     ax.tick_params(axis="both", labelsize=9, pad=2)
 for j in range(n_pp, len(axes)):
     axes[j].axis("off")
-fig.supxlabel("Model evidence (|decision variable|)", fontsize=54, y=0.01)
+fig.supxlabel("Model evidence (| decision variable |)", fontsize=54, y=0.01)
 fig.supylabel("Saccade probability", fontsize=54, x=0.01)
 fig.subplots_adjust(left=0.1, bottom=0.1, top=0.92, wspace=0.25, hspace=0.35)
 fig.savefig(f"{OUTDIR}/individual_absdv_saccade_mosaic.png", dpi=300)
 fig.savefig(f"{OUTDIR}/individual_absdv_saccade_mosaic.pdf", format="pdf")
 plt.close()
 print(" - individual_absdv_saccade_mosaic.png")
+
+# =============================================================
+# GAZE-POLICY (NULL MODEL) COMPARISON
+# =============================================================
+apply_r_style()
+
+GAZE_MODES = ["real", "shuffle_time", "random_from_real_hist", "random",
+              "ideal_coverage", "center", "corner_tl"]
+
+GAZE_MODE_LABEL = {
+    "real":                  "Recorded gaze",
+    "shuffle_time":          "Shuffled fixations",
+    "random_from_real_hist": "Resampled history",
+    "random":                "Fully random",
+    "ideal_coverage":        "Coverage-maximizing",
+    "center":                "Constant central",
+    "corner_tl":             "Constant peripheral",
+}
+
+# One distinct color per mode
+MODE_COLOR = {
+    "real":                   "#F0190A",
+    "shuffle_time":           "#B39DDB",
+    "random_from_real_hist":  "#93C5EC",
+    "random":                 "#58C8D7",
+    "ideal_coverage":         "#80CBC4",
+    "center":                 "#7984C6",
+    "corner_tl":              "#AFBBC1",
+}
+
+def _rmse(human, model):
+    human = np.asarray(human, dtype=float)
+    model = np.asarray(model, dtype=float)
+    return np.sqrt(np.nanmean((human - model) ** 2))
+
+RAW_FILE_CANDIDATES = {
+    "real":                   ["replay_model_results_real.csv", "replay_model_results.csv"],
+    "shuffle_time":           ["replay_model_results_shuffle_time.csv"],
+    "random_from_real_hist":  ["replay_model_results_random_from_real_hist.csv"],
+    "random":                 ["replay_model_results_random.csv"],
+    "ideal_coverage":         ["replay_model_results_ideal_coverage.csv"],
+    "center":                 ["replay_model_results_center.csv"],
+    "corner_tl":              ["replay_model_results_corner_tl.csv"],
+}
+
+def load_gaze_mode_rmse_from_raw(raw_dir=".", modes=GAZE_MODES):
+    rows = []
+    for mode in modes:
+        path = None
+        for candidate in RAW_FILE_CANDIDATES[mode]:
+            p = os.path.join(raw_dir, candidate)
+            if os.path.exists(p):
+                path = p
+                break
+        if path is None:
+            print(f"[WARN] no raw file found for mode '{mode}' "
+                  f"(tried {RAW_FILE_CANDIDATES[mode]})")
+            continue
+
+        df_mode = pd.read_csv(path)
+        df_mode["human_acc"] = df_mode["human_correct"].astype(float)
+        df_mode["speed_px_s_used"] = df_mode["speed_px_s_used"].astype(int)
+        df_mode = df_mode[df_mode["speed_px_s_used"].isin(SPEED_ORDER)].copy()
+
+        rt_present_col = pick_first_existing(
+            df_mode, ["model_rt_present_mean_s", "model_rt_present_median_s"])
+        rt_absent_col = pick_first_existing(
+            df_mode, ["model_rt_absent_mean_s", "model_rt_absent_median_s"])
+
+        # -- reuses the existing aggregation functions, same logic as the rest of the script --
+
+        rt_tp_m = df_mode[df_mode["human_target_present"] == 1].copy()
+        rt_ta_m = df_mode[df_mode["human_target_present"] == 0].copy()
+        rt_pp_tp_m = rt_pp_for_subset(rt_tp_m, rt_present_col)
+        rt_pp_ta_m = rt_pp_for_subset(rt_ta_m, rt_absent_col)
+        rt_group_tp_m = rt_groupify(rt_pp_tp_m)
+        rt_group_ta_m = rt_groupify(rt_pp_ta_m)
+        
+        hit_pp_m, fa_pp_m = response_rates_by_pp(df_mode)
+        dprime_pp_m = hit_pp_m.merge(fa_pp_m, on=["participant", "speed_px_s_used"], how="inner")
+        dprime_pp_m["human_dprime"] = rates_to_dprime(dprime_pp_m["human_hit"], dprime_pp_m["human_fa"])
+        dprime_pp_m["model_dprime"] = rates_to_dprime(dprime_pp_m["model_hit"], dprime_pp_m["model_fa"])
+        dprime_group_m = groupify(dprime_pp_m, "human_dprime", "model_dprime", "dprime")
+
+        rows.append({
+            "mode": mode,
+            "label": GAZE_MODE_LABEL[mode],
+            "rt_tp_rmse": _rmse(rt_group_tp_m["human_rt_mean"], rt_group_tp_m["model_rt_mean"]),
+            "rt_ta_rmse": _rmse(rt_group_ta_m["human_rt_mean"], rt_group_ta_m["model_rt_mean"]),
+            "dprime_rmse": _rmse(dprime_group_m["human_dprime_mean"], dprime_group_m["model_dprime_mean"]),
+        })
+    return pd.DataFrame(rows)
+
+gaze_rmse = load_gaze_mode_rmse_from_raw(raw_dir=".")
+gaze_rmse.to_csv(f"{OUTDIR}/gaze_mode_rmse_table.csv", index=False)
+
+TITLE_FS = R.BASE_SIZE * 1.05
+LABEL_FS = R.BASE_SIZE * 1.05
+TICK_FS  = R.BASE_SIZE * 0.8
+LEGEND_FS = R.BASE_SIZE * 0.85
+
+fig, axes = plt.subplots(1, 3, figsize=(19, 6.5))
+metric_cols = [("rt_tp_rmse",  "RT RMSE, target-present (s)", "a."),
+               ("rt_ta_rmse",  "RT RMSE, target-absent (s)", "b."),
+               ("dprime_rmse", "Sensitivity (d\u2032) RMSE", "c."),]
+
+for ax, (col, ylabel, panel_label) in zip(axes, metric_cols):
+    add_panel_label(ax, panel_label, fontsize=TITLE_FS * 1.1)
+    bar_colors = [MODE_COLOR[m] for m in gaze_rmse["mode"]]
+    ax.bar(range(len(gaze_rmse)), gaze_rmse[col], color=bar_colors,
+           edgecolor="#333333", linewidth=0.8)
+    ax.set_ylabel(ylabel, fontsize=LABEL_FS)
+    ax.set_xticks([])  # labels moved to shared legend instead of x-axis
+    ax.tick_params(axis="y", labelsize=TICK_FS)
+
+handles = [mpl.patches.Patch(facecolor=MODE_COLOR[m], edgecolor="#333333",
+                              label=GAZE_MODE_LABEL[m]) for m in gaze_rmse["mode"]]
+fig.legend(handles=handles, loc="lower center", ncol=4, frameon=False,
+           fontsize=LEGEND_FS, bbox_to_anchor=(0.5, -0.12))
+
+fig.tight_layout()
+fig.savefig(f"{OUTDIR}/gaze_mode_comparison.png", bbox_inches="tight")
+fig.savefig(f"{OUTDIR}/gaze_mode_comparison.pdf", format="pdf", bbox_inches="tight")
+plt.close()
+print(" - gaze_mode_comparison.png")
