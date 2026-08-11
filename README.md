@@ -37,7 +37,7 @@ assuming that discriminability grows with the square root of integration time:
 
 $$
 S_{\Delta t}(e_{i,t},v)=
-\alpha\S(e_{i,t},v)\sqrt{\frac{\Delta t}{0.4}},
+\alpha\ S(e_{i,t},v)\sqrt{\frac{\Delta t}{0.4}},
 $$
 
 where 𝛼 is a fixed global gain parameter that maps sensitivity measured in the visibility task to
