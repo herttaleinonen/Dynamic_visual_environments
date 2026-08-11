@@ -23,22 +23,26 @@ from config import (
     GRID_OFFSET_Y,
 )
 
-# -------------------
+
+# =========================
 # Filename parsing
-# -------------------
+# =========================
 def participant_from_name(fname: str) -> str:
     m = re.search(r"(kh\d+)", os.path.basename(fname).lower())
     if not m:
         raise ValueError(f"Could not extract participant (kh#) from {fname}")
     return m.group(1)
 
+
 def dt_from_name(fname: str) -> Optional[str]:
     m = re.search(r"(dt\d)", os.path.basename(fname).lower()) # dt = dynamic search task
     return m.group(1) if m else None
 
+
 def vt_from_name(fname: str) -> Optional[str]:
     m = re.search(r"(vt\d)", os.path.basename(fname).lower()) # vt = visibility task
     return m.group(1) if m else None
+
 
 def is_missing(x) -> bool:
     """True for NaN/None/empty-string."""
@@ -50,6 +54,7 @@ def is_missing(x) -> bool:
         return True
     return False
 
+
 def safe_int(x) -> Optional[int]:
     if is_missing(x):
         return None
@@ -58,6 +63,7 @@ def safe_int(x) -> Optional[int]:
     except Exception:
         return None
 
+
 def safe_float(x) -> Optional[float]:
     if is_missing(x):
         return None
@@ -65,6 +71,7 @@ def safe_float(x) -> Optional[float]:
         return float(x)
     except Exception:
         return None
+
 
 def safe_parse_positions(cell: str) -> Optional[np.ndarray]:
     """Parse Gabor Positions cell -> np.ndarray or None."""
@@ -80,6 +87,7 @@ def safe_parse_positions(cell: str) -> Optional[np.ndarray]:
     except Exception:
         return None
 
+
 def safe_parse_trajectory(cell: str) -> Optional[np.ndarray]:
     """Parse Target Trajectory cell -> np.ndarray [T,2] or None."""
     if is_missing(cell):
@@ -94,15 +102,16 @@ def safe_parse_trajectory(cell: str) -> Optional[np.ndarray]:
         return None
 
 
-# ---------------------------
+# =========================
 # ASC parsing (events-based)
-# ---------------------------
+# =========================
 @dataclass
 class Fix:
     t0: int
     t1: int
     x_px: float
     y_px: float
+
 
 @dataclass
 class TrialEye:
@@ -111,6 +120,7 @@ class TrialEye:
     offset_ms: Optional[int]
     fixes: List[Fix]
 
+
 GAZE_COORDS_RE = re.compile(
     r"MSG\s+\d+\s+GAZE_COORDS\s+([\d\.]+)\s+([\d\.]+)\s+([\d\.]+)\s+([\d\.]+)"
 )
@@ -118,6 +128,7 @@ TRIAL_RE = re.compile(r"MSG\s+(\d+)\s+TRIALID\s+(\d+)")
 ONSET_RE = re.compile(r"MSG\s+(\d+)\s+stimulus_onset")
 OFFSET_RE = re.compile(r"MSG\s+(\d+)\s+stimulus_offset")
 EFIX_RE = re.compile(r"EFIX\s+R\s+(\d+)\s+(\d+)\s+\d+\s+([\d\.]+)\s+([\d\.]+)")
+
 
 def parse_asc_events(path: str) -> Tuple[Tuple[int, int], Dict[int, TrialEye]]:
     """
@@ -177,18 +188,20 @@ def parse_asc_events(path: str) -> Tuple[Tuple[int, int], Dict[int, TrialEye]]:
     return (screen_w, screen_h), trials
 
 
-# -------------------
+# =========================
 # Coordinate transforms
-# -------------------
+# =========================
 def eyelink_px_to_centered_px(
     x_px: float, y_px: float, screen_w: int, screen_h: int
 ) -> Tuple[float, float]:
     return x_px - screen_w / 2.0, y_px - screen_h / 2.0
 
+
 def centered_px_to_grid_cells(x_c: float, y_c: float) -> Tuple[float, float]:
     gx = (x_c - GRID_OFFSET_X) / CELL_SIZE_PX
     gy = (y_c - GRID_OFFSET_Y) / CELL_SIZE_PX
     return gx, gy
+
 
 def eyelink_px_to_grid_cells(
     x_px: float, y_px: float, screen_w: int, screen_h: int
@@ -196,9 +209,10 @@ def eyelink_px_to_grid_cells(
     x_c, y_c = eyelink_px_to_centered_px(x_px, y_px, screen_w, screen_h)
     return centered_px_to_grid_cells(x_c, y_c)
 
-# ----------------------------
+
+# =========================
 # dt estimation + gaze series
-# ----------------------------
+# =========================
 def estimate_dt_from_positions(obj_xy_cells: np.ndarray, speed_px_s: int) -> Optional[float]:
     if speed_px_s <= 0:
         return None
@@ -211,9 +225,11 @@ def estimate_dt_from_positions(obj_xy_cells: np.ndarray, speed_px_s: int) -> Opt
     disp_px = disp_cells * CELL_SIZE_PX
     return float(disp_px / float(speed_px_s))
 
+
 def dt_from_duration(obj_xy_cells: np.ndarray, duration_s: float = 3.5) -> float:
     T = obj_xy_cells.shape[0]
     return duration_s / max(1, (T - 1))
+
 
 def gaze_series_cells_from_fixations(
     tr_eye: TrialEye,
@@ -244,6 +260,7 @@ def gaze_series_cells_from_fixations(
             gaze_cells[k] = last
     return gaze_cells
 
+
 def _gaze_change_flags(gaze_cells: np.ndarray, tol: float = 1e-6) -> np.ndarray:
     """
     Returns change[t] = 1 if gaze at t differs from gaze at t-1, else 0.
@@ -260,9 +277,10 @@ def _gaze_change_flags(gaze_cells: np.ndarray, tol: float = 1e-6) -> np.ndarray:
             change[t] = int(np.linalg.norm(g1 - g0) > tol)
     return change
 
-# ------------------
+
+# =========================
 # File collection
-# ------------------
+# =========================
 def collect_visibility_files(vis_dir: str) -> Dict[str, List[str]]:
     files = glob.glob(os.path.join(vis_dir, "visibility_kh*_vt*_*.csv"))
     by_pp: Dict[str, List[str]] = {}
@@ -270,6 +288,7 @@ def collect_visibility_files(vis_dir: str) -> Dict[str, List[str]]:
         pp = participant_from_name(f)
         by_pp.setdefault(pp, []).append(f)
     return by_pp
+
 
 def collect_search_pairs(search_dir: str) -> Dict[str, List[Tuple[str, str]]]:
     """
@@ -327,9 +346,10 @@ def collect_search_pairs(search_dir: str) -> Dict[str, List[Tuple[str, str]]]:
     )
     return by_pp
 
-# ------------------
+
+# =========================
 # Debug
-# ------------------
+# =========================
 def debug_inventory(search_dir, visibility_dir):
 
     search_csvs = glob.glob(os.path.join(search_dir, "results_kh*_dt*_*.csv"))
@@ -364,13 +384,15 @@ def debug_inventory(search_dir, visibility_dir):
     print("Participants in BOTH:", common[:10], ("..." if len(common) > 10 else ""))
     print("=======================\n")
 
+
 def stable_trial_seed(pp: str, csv_basename: str, trial: int) -> int:
     seed_str = f"{pp}|{csv_basename}|{trial}"
     return zlib.crc32(seed_str.encode("utf-8")) & 0xFFFFFFFF
 
-# ------------------
+
+# =========================
 # Gaze null-models
-# ------------------
+# =========================
 def perturb_gaze(gaze_cells, mode, rng, dt_s=None):
     """
     Returns gaze_cells_used: [T,2] in grid coords.
@@ -425,7 +447,7 @@ def perturb_gaze(gaze_cells, mode, rng, dt_s=None):
         g[:, 1] = 0.0
         return g
 
-    # ----- build fixation-block representation of real gaze -----
+    # ----- build fixation-block representation of REAL gaze -----
     # for shuffle/shift at fixation cadence
     real_fix = np.zeros((n_fixes, 2), dtype=float)
     for fi in range(n_fixes):
