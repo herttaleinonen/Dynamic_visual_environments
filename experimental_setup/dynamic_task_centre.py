@@ -120,7 +120,7 @@ def _cedrus_open():
         print(f"[Cedrus] init failed: {e}")
         return None
 
-def _cedrus_flush(dev, dur=0.12):
+def _cedrus_flush(dev, dur=0.03):
     if not dev:
         return
     try:
