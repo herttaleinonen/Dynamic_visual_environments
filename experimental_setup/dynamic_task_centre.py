@@ -98,7 +98,7 @@ def wait_for_central_fixation(win, el_tracker, screen_width, screen_height,
     return True, drift_deg
 
 
-# --------- Optional Cedrus-response box setup (unchanged) ---------
+# --------- Optional Cedrus-response box setup ---------
 try:
     import pyxid2
 except Exception:
@@ -181,7 +181,7 @@ def _cedrus_get_choice(dev):
         return None
 
 
-# -------- Helper functions (unchanged) --------
+# -------- Helper functions --------
 def gaze_pix_to_grid(px, py, grid_offset_x, grid_offset_y, cell_size):
     gx = (px - grid_offset_x) / cell_size
     gy = (py - grid_offset_y) / cell_size
