@@ -8,7 +8,7 @@ Created on Wed May 28 11:28:41 2025
 
     Provides run_dynamic_trials() for calling from main.py after EyeLink setup.
     Displays dynamic Gabor arrays on a Gaussian noise background,
-    flashes a fixation cross between trials,
+    flashes a fixation cross between trials for 0.5s,
     collects responses during the trial duration window,
     provides feedback between trials, incorrect/correct based on gaze response.
     
@@ -265,7 +265,7 @@ def run_dynamic_trials(win, el_tracker, screen_width, screen_height, participant
         )
         for img in noise_bank
     ]
-    bank_i = 0
+    bank_i = random.randrange(len(noise_frames))
 
     ema_alpha = 0.5
     fix_radius_px = max(80, int(cell_size * 1.2))
@@ -351,11 +351,14 @@ def run_dynamic_trials(win, el_tracker, screen_width, screen_height, participant
     
     with open(filename, mode='w', newline='') as file:
         writer = csv.writer(file)
+        
         writer.writerow([
-            "Task Type", "Participant ID", "Trial", "Target Present", "Response", "Correct",
-            "Reaction Time (s)", "Num Gabors", "Gabor Positions", "Target Trajectory",
-            "Speed (px/s)", "FixOnTargetTime(s)", "LastFixIndex", 'CalibrationDrift(deg)'
-        ])
+        "Task Type", "Participant ID", "Trial", "Target Present", "Target orientation",
+        "Response", "Correct", "Reaction Time (s)", "Num Gabors", "Gabor Positions",
+        "Target Trajectory", "Speed (px/s)", "FixOnTargetTime(s)", "LastFixIndex",
+        'CalibrationDrift(deg)'
+    ])
+
 
         progress_text = visual.TextStim(
             win, text="", color='white', height=28,
@@ -470,7 +473,8 @@ def run_dynamic_trials(win, el_tracker, screen_width, screen_height, participant
 
             while trial_clock.getTime() < trial_duration:
                 noise_frames[bank_i].draw()
-                bank_i = (bank_i + 1) % len(noise_frames)
+                choices = [i for i in range(len(noise_frames)) if i != bank_i]
+                bank_i = random.choice(choices)
 
                 frame_positions = []
                 for i in range(num_gabors):
@@ -706,7 +710,7 @@ def run_dynamic_trials(win, el_tracker, screen_width, screen_height, participant
                 resp_num = ""
             
             writer.writerow([
-                "dynamic task", participant_id, trial + 1, int(target_present),
+                "dynamic task", participant_id, trial + 1, int(target_present), target_orientation,
                 resp_num,
                 int(is_correct), rt,
                 num_gabors, gabor_trajectory,
@@ -716,3 +720,4 @@ def run_dynamic_trials(win, el_tracker, screen_width, screen_height, participant
                 last_committed_fix_idx if (target_present and last_committed_fix_idx is not None) else "",
                 drift_deg
             ])
+
