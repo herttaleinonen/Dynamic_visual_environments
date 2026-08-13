@@ -26,6 +26,9 @@ from config import (
     target_sf, transition_steps, movement_delay
 )
 
+import gc
+ 
+
 # ---------- central fixation gate ----------
 def wait_for_central_fixation(win, el_tracker, screen_width, screen_height,
                               deg_thresh=2.499, hold_ms=200,
@@ -98,7 +101,7 @@ def wait_for_central_fixation(win, el_tracker, screen_width, screen_height,
     return True, drift_deg
 
 
-# --------- Optional Cedrus-response box setup ---------
+# --------- Optional Cedrus-response box setup (unchanged) ---------
 try:
     import pyxid2
 except Exception:
@@ -120,7 +123,7 @@ def _cedrus_open():
         print(f"[Cedrus] init failed: {e}")
         return None
 
-def _cedrus_flush(dev, dur=0.03):
+def _cedrus_flush(dev, dur=0.12):
     if not dev:
         return
     try:
@@ -181,7 +184,7 @@ def _cedrus_get_choice(dev):
         return None
 
 
-# -------- Helper functions --------
+# -------- Helper functions (unchanged) --------
 def gaze_pix_to_grid(px, py, grid_offset_x, grid_offset_y, cell_size):
     gx = (px - grid_offset_x) / cell_size
     gy = (py - grid_offset_y) / cell_size
@@ -260,6 +263,7 @@ def run_dynamic_trials_centre(win, el_tracker, screen_width, screen_height, part
         return max(capture_radius_px, gauss_k * sigma)
 
     cedrus = _cedrus_open()
+    gc.collect()
     if cedrus:
         print("[Cedrus] Connected. Any button will start/respond.")
     else:
@@ -326,7 +330,7 @@ def run_dynamic_trials_centre(win, el_tracker, screen_width, screen_height, part
         event.waitKeys(keyList=['return', 'enter'])
     _cedrus_flush(cedrus)
     event.clearEvents(eventType='keyboard')
-
+    """
     # -------- persistent in-trial fixation cross --------
     fixation_cross = visual.TextStim(win, text='+', color='white', height=24, units='pix')
     break_feedback = visual.TextStim(
@@ -334,15 +338,25 @@ def run_dynamic_trials_centre(win, el_tracker, screen_width, screen_height, part
         color='white', height=28, wrapWidth=screen_width * 0.7, units='pix'
     )
     # -----------------------------------------------------------
-
+    """
+    # -------- persistent in-trial fixation cross --------
+    fixation_cross = visual.TextStim(win, text='+', color='white', height=24, units='pix')
+    break_feedback = visual.TextStim(
+        win, text="Fixation lost -- please keep your eyes on the cross.\nThis trial will be repeated later.",
+        color='white', height=28, wrapWidth=screen_width * 0.7, units='pix'
+    )
+    break_bg = visual.Rect(win, width=screen_width, height=screen_height, units='pix',
+                           fillColor='gray', lineColor='gray')   
+    # -----------------------------------------------------------
     with open(filename, mode='w', newline='') as file:
         writer = csv.writer(file)
         writer.writerow([
-            "Task Type", "Participant ID", "Trial", "Target Present", "Response", "Correct",
+            "Task Type", "Participant ID", "Trial", "Target Present", "Target orientation", "Response", "Correct",
             "Reaction Time (s)", "Num Gabors", "Gabor Positions", "Target Trajectory",
             "Speed (px/s)", "FixOnTargetTime(s)", "LastFixIndex", 'CalibrationDrift(deg)',
-            "FixBreakAttempts"   # new column
+            "FixBreakAttempts"
         ])
+        
 
         # -------- separate log for trials excluded after too many break attempts --------
         excluded_filename = os.path.join(output_dir, f"excluded_{participant_id}_{timestamp}.csv")
@@ -373,10 +387,19 @@ def run_dynamic_trials_centre(win, el_tracker, screen_width, screen_height, part
         n_present = num_trials // 2
         present_schedule = [1]*n_present + [0]*(num_trials - n_present)
         random.shuffle(present_schedule)
+        
+        gc.collect()       
+        gc.freeze()        
+        gc.disable()        
+
 
         # -------- queue-based trial loop (supports requeueing on fixation break) --------
         trial_queue = deque(range(num_trials))
         attempt_counts = {i: 0 for i in range(num_trials)}
+        
+        # ============ TEMPORARY: GIF capture for conference — REMOVE AFTER USE ============
+        CAPTURE_TRIAL_ID = 0          # which trial (0-indexed) to record; set to -1 to disable
+        # ====================================================================================
 
         while trial_queue:
             trial_id = trial_queue.popleft()
@@ -564,6 +587,11 @@ def run_dynamic_trials_centre(win, el_tracker, screen_width, screen_height, part
                 for g in gabors: g.draw()
                 fixation_cross.draw()   # cross stays visible throughout the search display
                 win.flip()
+                
+                # ============ TEMPORARY: capture this frame — REMOVE AFTER USE ============
+                if trial_id == CAPTURE_TRIAL_ID:
+                    win.getMovieFrame(buffer='front')
+                # ============================================================================
 
                 if (not resp_open) and (now_t >= min_rt):
                     if cedrus:
@@ -608,9 +636,27 @@ def run_dynamic_trials_centre(win, el_tracker, screen_width, screen_height, part
 
             el_tracker.sendMessage('stimulus_offset')
             el_tracker.stopRecording()
+            
+            # ============ TEMPORARY: save GIF and clear buffer — REMOVE AFTER USE ============
+            if trial_id == CAPTURE_TRIAL_ID and win.movieFrames:
+                gif_path = os.path.join(output_dir, f"stim_capture_trial{trial_id+1}.gif")
+                win.saveMovieFrames(gif_path, fps=int(round(1/movement_delay)) if movement_delay > 0 else 24)
+                print(f"[CAPTURE] Saved {gif_path}")
+                win.movieFrames = []
+            # =====================================================================================
 
             # -------- handle a fixation break -- abort, feedback, requeue --------
+            """
             if fixation_broken:
+                break_feedback.draw()
+                win.flip()
+                core.wait(1.2)
+                event.clearEvents(eventType='keyboard')
+                if cedrus:
+                    _cedrus_flush(cedrus)
+            """
+            if fixation_broken:
+                break_bg.draw()          
                 break_feedback.draw()
                 win.flip()
                 core.wait(1.2)
@@ -718,6 +764,8 @@ def run_dynamic_trials_centre(win, el_tracker, screen_width, screen_height, part
                 drift_deg,
                 attempt_counts[trial_id]   # how many attempts this trial took
             ])
+            
+            gc.collect() 
 
         excluded_file.close()
 
