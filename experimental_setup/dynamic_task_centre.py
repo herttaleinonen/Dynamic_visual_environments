@@ -18,15 +18,15 @@ import csv
 import random
 import numpy as np
 from collections import deque
+import gc
 from psychopy import visual, core, event
+
 from config import (
     grid_size_x, grid_size_y, cell_size, DIAGONAL_SCALE,
     num_trials, trial_duration, feedback_duration, timeout_feedback_text,
     orientations, spatial_frequencies, target_orientation,
     target_sf, transition_steps, movement_delay
 )
-
-import gc
  
 
 # ---------- central fixation gate ----------
