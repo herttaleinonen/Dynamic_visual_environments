@@ -396,10 +396,6 @@ def run_dynamic_trials_centre(win, el_tracker, screen_width, screen_height, part
         # -------- queue-based trial loop (supports requeueing on fixation break) --------
         trial_queue = deque(range(num_trials))
         attempt_counts = {i: 0 for i in range(num_trials)}
-        
-        # ============ TEMPORARY: GIF capture for conference — REMOVE AFTER USE ============
-        CAPTURE_TRIAL_ID = 0          # which trial (0-indexed) to record; set to -1 to disable
-        # ====================================================================================
 
         while trial_queue:
             trial_id = trial_queue.popleft()
@@ -587,11 +583,6 @@ def run_dynamic_trials_centre(win, el_tracker, screen_width, screen_height, part
                 for g in gabors: g.draw()
                 fixation_cross.draw()   # cross stays visible throughout the search display
                 win.flip()
-                
-                # ============ TEMPORARY: capture this frame — REMOVE AFTER USE ============
-                if trial_id == CAPTURE_TRIAL_ID:
-                    win.getMovieFrame(buffer='front')
-                # ============================================================================
 
                 if (not resp_open) and (now_t >= min_rt):
                     if cedrus:
@@ -636,14 +627,6 @@ def run_dynamic_trials_centre(win, el_tracker, screen_width, screen_height, part
 
             el_tracker.sendMessage('stimulus_offset')
             el_tracker.stopRecording()
-            
-            # ============ TEMPORARY: save GIF and clear buffer — REMOVE AFTER USE ============
-            if trial_id == CAPTURE_TRIAL_ID and win.movieFrames:
-                gif_path = os.path.join(output_dir, f"stim_capture_trial{trial_id+1}.gif")
-                win.saveMovieFrames(gif_path, fps=int(round(1/movement_delay)) if movement_delay > 0 else 24)
-                print(f"[CAPTURE] Saved {gif_path}")
-                win.movieFrames = []
-            # =====================================================================================
 
             # -------- handle a fixation break -- abort, feedback, requeue --------
             """
