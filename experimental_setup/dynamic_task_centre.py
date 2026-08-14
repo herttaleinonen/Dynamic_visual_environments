@@ -17,8 +17,8 @@ import os
 import csv
 import random
 import numpy as np
-from collections import deque
 import gc
+from collections import deque
 from psychopy import visual, core, event
 
 from config import (
