@@ -101,7 +101,7 @@ def wait_for_central_fixation(win, el_tracker, screen_width, screen_height,
     return True, drift_deg
 
 
-# --------- Optional Cedrus-response box setup (unchanged) ---------
+# --------- Optional Cedrus-response box setup ---------
 try:
     import pyxid2
 except Exception:
@@ -184,7 +184,7 @@ def _cedrus_get_choice(dev):
         return None
 
 
-# -------- Helper functions (unchanged) --------
+# -------- Helper functions --------
 def gaze_pix_to_grid(px, py, grid_offset_x, grid_offset_y, cell_size):
     gx = (px - grid_offset_x) / cell_size
     gy = (py - grid_offset_y) / cell_size
@@ -401,7 +401,7 @@ def run_dynamic_trials_centre(win, el_tracker, screen_width, screen_height, part
             trial_id = trial_queue.popleft()
             attempt_counts[trial_id] += 1
 
-            # central fixation gate before each trial attempt (unchanged, same cross/threshold family)
+            # central fixation gate before each trial attempt 
             ok, drift_deg = wait_for_central_fixation(
                 win, el_tracker, screen_width, screen_height,
                 deg_thresh=2.499, hold_ms=200,
@@ -529,7 +529,7 @@ def run_dynamic_trials_centre(win, el_tracker, screen_width, screen_height, part
                 if eye is not None:
                     rx, ry = eye.getGaze()
                     if (rx is not None and ry is not None and rx > -1e5 and ry > -1e5):
-                        # existing EMA smoothing + object-fixation clustering (unchanged)
+                        # existing EMA smoothing + object-fixation clustering 
                         ema_x = float(np.clip(ema_alpha*rx + (1-ema_alpha)*ema_x, 0, screen_width-1))
                         ema_y = float(np.clip(ema_alpha*ry + (1-ema_alpha)*ema_y, 0, screen_height-1))
                         gx = ema_x - (screen_width / 2.0)
