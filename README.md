@@ -2,7 +2,7 @@
 
 <a href="url"><img src="https://github.com/herttaleinonen/DFSM/blob/main/replay_model/images/dfsm.png" height="548" width="548" ></a>
 
-<a href="url"><img src="https://github.com/herttaleinonen/DFSM/blob/main/replay_model/images/ECVP%20posteri.pdf" ></a>
+https://github.com/herttaleinonen/DFSM/blob/main/replay_model/images/ECVP%20posteri.pdf
 
 <a href="https://github.com/herttaleinonen/DFSM/blob/main/replay_model/images/ECVP%20posteri.pdf" class="image fit"><img src="https://github.com/herttaleinonen/DFSM/blob/main/replay_model/images/ECVP%20posteri.pdf" alt=""></a>
 
