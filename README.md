@@ -2,8 +2,9 @@
 
 <a href="url"><img src="https://github.com/herttaleinonen/DFSM/blob/main/replay_model/images/dfsm.png" height="548" width="548" ></a>
 
-`Poster here:`  
-https://github.com/herttaleinonen/DFSM/blob/main/replay_model/images/ECVP%20posteri.pdf
+
+[Poster](https://github.com/herttaleinonen/DFSM/blob/main/replay_model/images/ECVP%20posteri.pdf)
+
 
 ## The model scheme:
 
