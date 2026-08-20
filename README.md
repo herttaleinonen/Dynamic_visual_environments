@@ -4,7 +4,7 @@
 
 https://github.com/herttaleinonen/DFSM/blob/main/replay_model/images/ECVP%20posteri.pdf
 
-<a href="https://github.com/herttaleinonen/DFSM/blob/main/replay_model/images/ECVP%20posteri.pdf" class="image fit"><img src="https://github.com/herttaleinonen/DFSM/blob/main/replay_model/images/ECVP%20posteri.pdf" alt=""></a>
+<a href="https://github.com/herttaleinonen/DFSM/blob/main/replay_model/images/ECVP%20posteri.pdf" </a>
 
 Each search trial was approximated as a sequence of discrete time steps (Δ𝑡 = 50 ms). For each object
 𝑖 at time step 𝑡, retinal eccentricity was computed as: 
